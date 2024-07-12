@@ -895,7 +895,7 @@ document.addEventListener('visibilitychange', function () {
   }
 });
 // 注意：live2d_path 参数应使用绝对路径
-const live2d_path = "https://github.com/bloyet/tupian/tree/0987f0a17cae46f9ade6315f687c5720bc5652b5/live2d-widget/";  //xxx.xx 改成你网站的域名https://github.com/bloyet/tupian/tree/0987f0a17cae46f9ade6315f687c5720bc5652b5/live2d-widget
+const live2d_path = "https://bloyet.github.io/live2d-widget/";  //xxx.xx 改成你网站的域名https://github.com/bloyet/tupian/tree/0987f0a17cae46f9ade6315f687c5720bc5652b5/live2d-widget
 //const live2d_path = "/live2d-widget/";
 
 // 封装异步加载资源的方法
