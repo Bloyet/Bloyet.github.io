@@ -1,0 +1,259 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="generator" content="Gridea Pro 0.0.0-dev">
+<title>Window认证机制 | Bloyet&#39;s blog</title>
+<link rel="shortcut icon" href="/favicon.ico?v=1789062689">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="/styles/main.css">
+<link rel="alternate" type="application/rss+xml" title="Window认证机制 | Bloyet&#39;s blog - RSS Feed" href="/feed.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="" />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  <meta name="description" content="window的认证主要分为三部分： 本地认证：用户直接操作计算机登陆账户 网络认证：远程连接到工作组中的某个设备 域认证：登陆到域环境中的某个设备 本地认证 用户输入密码，系统收到密码后将用户输入的密码计算成NTLM Hash，然后与sam数据库（%SystemRoot%\system32\config\sam）中该用户的哈希比对，匹配则登陆成功，不匹配则&amp;hellip;">
+<link rel="canonical" href="https://bloyet.github.io/post/window-authentication-mechanism/">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Window认证机制","url":"https://bloyet.github.io/post/window-authentication-mechanism/","description":"window的认证主要分为三部分： 本地认证：用户直接操作计算机登陆账户 网络认证：远程连接到工作组中的某个设备 域认证：登陆到域环境中的某个设备 本地认证 用户输入密码，系统收到密码后将用户输入的密码计算成NTLM Hash，然后与sam数据库（%SystemRoot%\\system32\\config\\sam）中该用户的哈希比对，匹配则登陆成功，不匹配则\u0026hellip;","datePublished":"2026-05-29T01:39:20+08:00","dateModified":"2026-09-11T01:49:13+08:00","author":{"@type":"Person","name":"Bloyet's blog"},"publisher":{"@type":"Organization","logo":{"@type":"ImageObject","url":"/images/avatar.png"},"name":"Bloyet's blog"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://bloyet.github.io","name":"Bloyet's blog","position":1},{"@type":"ListItem","item":"https://bloyet.github.io/post/window-authentication-mechanism/","name":"Window认证机制","position":2}]}</script>
+<meta property="og:title" content="Window认证机制">
+<meta property="og:description" content="window的认证主要分为三部分： 本地认证：用户直接操作计算机登陆账户 网络认证：远程连接到工作组中的某个设备 域认证：登陆到域环境中的某个设备 本地认证 用户输入密码，系统收到密码后将用户输入的密码计算成NTLM Hash，然后与sam数据库（%SystemRoot%\system32\config\sam）中该用户的哈希比对，匹配则登陆成功，不匹配则&amp;hellip;">
+<meta property="og:url" content="https://bloyet.github.io/post/window-authentication-mechanism/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Bloyet's blog">
+<meta property="og:image" content="/images/avatar.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://bloyet.github.io/post/window-authentication-mechanism/">
+<meta name="twitter:title" content="Window认证机制">
+<meta name="twitter:description" content="window的认证主要分为三部分： 本地认证：用户直接操作计算机登陆账户 网络认证：远程连接到工作组中的某个设备 域认证：登陆到域环境中的某个设备 本地认证 用户输入密码，系统收到密码后将用户输入的密码计算成NTLM Hash，然后与sam数据库（%SystemRoot%\system32\config\sam）中该用户的哈希比对，匹配则登陆成功，不匹配则&amp;hellip;">
+<meta name="twitter:image" content="/images/avatar.png">
+</head>
+  <body class="page-post">
+    <div class="main">
+      <div class="main-content">
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Window认证机制
+            </h2>
+            <div class="post-info">
+              <span>
+                2026-05-29
+              </span>
+              <span>
+                24 分钟阅读
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>window的认证主要分为三部分：</p>
+<p>本地认证：用户直接操作计算机登陆账户</p>
+<p>网络认证：远程连接到工作组中的某个设备</p>
+<p>域认证：登陆到域环境中的某个设备</p>
+<h1 id="heading">本地认证</h1>
+<p>用户输入密码，系统收到密码后将用户输入的密码计算成NTLM Hash，然后与sam数据库（%SystemRoot%\system32\config\sam）中该用户的哈希比对，匹配则登陆成功，不匹配则登陆失败</p>
+<p>NTLM Hash：</p>
+<pre><code class="language-java">admin  -&gt; hex(16进制编码) = 61646d696e
+61646d696e -&gt; Unicode = 610064006d0069006e00
+610064006d0069006e00 -&gt; MD4 = 209c6174da490caeb422f3fa5a7ae634
+</code></pre>
+<p>其中 209c6174da490caeb422f3fa5a7ae634 就是NTLM Hash</p>
+<p><font style="color:rgb(36, 41, 46);">winlogon.exe是用来管理用户登录和登出的，相当于就是弹个登录框和登出框，然后接收用户的输入，并将其送给lsass.exe（windows</font><strong><font style="color:rgb(36, 41, 46);">本地</font></strong><font style="color:rgb(36, 41, 46);">安全策略和登录策略）进程，将该</font><font style="color:#DF2A3F;">明文密码</font><font style="color:rgb(36, 41, 46);">加密成</font><font style="color:#DF2A3F;">NTLM Hash</font><font style="color:rgb(36, 41, 46);">和SAM文件中的hash进行对比和认证。</font></p>
+<p><strong>用mimikatz来获取的明文密码，便是在这个进程中读取到的（这个工具的使用在下文会进行补充）</strong></p>
+<blockquote>
+<p>在旧版 Windows（如 Windows 7）中，默认开启的 WDigest 认证机制会让 <code>lsass.exe</code> 在内存中一直保留明文密码，这增加了风险。从 Windows 8.1 和 Windows Server 2012 R2 开始，微软默认禁用了此功能，除非特殊情况，<code>lsass.exe</code> 不会在内存中长期保存明文密码，这提高了系统的安全性 。</p>
+</blockquote>
+<hr />
+<h1 id="heading-1">网络认证</h1>
+<p>网络认证即在工作组环境下远程登陆另一台电脑所采用的认证机制</p>
+<p>NTLM协议的认证过程分为三步，也叫挑战相应机制：</p>
+<p>1.协商</p>
+<p>2.质询</p>
+<p>3.验证</p>
+<p>协商：双方确定使用的协议版本，NTLM存在V1和V2两个版本，具体区别就是加密方式不同</p>
+<p>质询：挑战（Chalenge）/响应（Response）认证机制的核心</p>
+<p>验证：在质询完成后，验证结果，是认证的最后一步。</p>
+<p>具体流程： 主要是质询的这个流程</p>
+<ol>
+<li>
+<p>客户端向服务器端发送用户信息 <font style="color:#DF2A3F;">(用户名)</font> 请求</p>
+</li>
+<li>
+<p>服务器接受到请求，如果存在对应的用户名，生成一个 16 位的随机数，被称之为 “Challenge”， 使用登录用户名对应的 <font style="color:#DF2A3F;">NTLM Hash</font> （这个就是用户名对应的密码 然后进行加密的产物）加密 Challenge (16 位随机字符)， 生成 Challenge1，存储在内存中。同时，生成 Challenge1 后，将 Challenge (16 位随机 字符) 发送给客户端。</p>
+</li>
+<li>
+<p>客户端接受到 Challenge 后，使用将要登录到账户对应的 NTLM Hash 加密 Challenge 生成 Response，然后将 Response 发送至服务器端。</p>
+</li>
+</ol>
+<p>然后 将Response 和 Challenge1 进行比对 一样就完成验证</p>
+<p>其中，经过 NTLM Hash 加密 Challenge 的结果在网络协议中称之为 Net NTLM Hash。</p>
+<h2 id="pth-pass-the-hash--">PTH（ Pass-The-Hash  哈希传递攻击）</h2>
+<p>我们可以看到 这上面学习到的这个网络认证中 从头到尾是都不需要明文密码的，或者说NTLM Hash在网络认证中就相当于明文密码。</p>
+<p><strong><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">在工作组环境中：</font></strong></p>
+<ul>
+<li><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">Windows 2003和之前的机器，可以使用本地管理员组内用户进行攻击。</font></li>
+<li><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">Windows 2003 之后的机器，只能是administrator用户的哈希值才能进行哈希传递攻击，其他用户(包括管理员用户但是非administrator)也不能使用哈希传递攻击，会提示拒绝访问。</font></li>
+</ul>
+<p><strong><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">在域环境中：</font></strong></p>
+<ul>
+<li><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">只能是</font><strong><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">域管理员组内用户</font></strong><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">(可以是域管理员组内非administrator用户)的哈希值才能进行哈希传递攻击，攻击成功后，可以访问域内任何一台机器。</font></li>
+</ul>
+<p>如果我们拿下了一台内网机器之后， 能使用工具（最著名的如 Mimikatz）读取系统内存中的 <strong>LSASS 进程</strong>（本地安全授权子系统服务）或者导出本地的 <strong>SAM 数据库</strong>。并且成功抓取到了该机器上登录过的高权限用户或者其他用户的 <font style="color:#DF2A3F;">NTLM Hash</font>。  那么我们并不需要去进行还原明文，<font style="color:rgb(31, 31, 31);">将抓取到的 NTLM Hash 直接注入到当前的会话中，或者作为参数传递给攻击工具。攻击工具利用这个 NTLM Hash，自动代替客户端去完成刚才提到的 NTLM 质询/响应，认证通过后就可以在不知道任何明文密码的情况下，成功获得了目标机器的控制权。</font></p>
+<p>如果是NetNTLM Hash  也就是在质询的过程中的产物，这个是不能进行哈希传递攻击的 因为它已经融入了Challenge，我们如果拿到了NetNTLM hash 就只能进行暴力破解，看能否还原NTLM hash或者是 <font style="color:#DF2A3F;">NTLM Relay</font>（中继攻击）</p>
+<h2 id="ntlm-relay">NTLM Relay（中继攻击）</h2>
+<p><a href="https://www.cnblogs.com/kqdssheng/p/18985420">AD 提权-NTLM 中继攻击（强制认证） - 扛枪的书生 - 博客园</a></p>
+<p><font style="color:rgb(31, 31, 31);">想办法让受害者（客户端）主动来连接自己，或者截获受害者发出的请求。</font></p>
+<p><font style="color:rgb(31, 31, 31);">在内网中，攻击者通常会利用局域网的广播协议缺陷（比如伪造 LLMNR / NBT-NS 响应），欺骗受害者说：“我就是你要找的那台服务器（比如文件服务器）”，从而让受害者把 NTLM 认证请求发给攻击者。收到后什么也不做，</font><strong><font style="color:rgb(31, 31, 31);">直接把这个请求转发给目标服务器</font></strong><font style="color:rgb(31, 31, 31);">。目标服务器收到请求，以为是正常用户想登录，于是生成了一个 </font><strong><font style="color:rgb(31, 31, 31);">16字节的 Challenge（挑战值）</font></strong><font style="color:rgb(31, 31, 31);"> 发回来。</font></p>
+<p><font style="color:rgb(31, 31, 31);">攻击者收到这个 Challenge，自己解不开（因为没有密码），于是</font><strong><font style="color:rgb(31, 31, 31);">原封不动地转发给受害者</font></strong><font style="color:rgb(31, 31, 31);">，假装这是自己出的题。受害者收到 Challenge，毫无察觉，老老实实地用自己的 NTLM Hash 对其进行加密，计算出 </font><strong><font style="color:rgb(31, 31, 31);">Response（也就是 NetNTLM Hash）</font></strong><font style="color:rgb(31, 31, 31);">，然后发给攻击者。攻击者拿到了这个极其珍贵的 Response。此时，攻击者</font><strong><font style="color:rgb(31, 31, 31);">立刻将这个 Response 转发给目标服务器</font></strong><font style="color:rgb(31, 31, 31);">。</font></p>
+<p><font style="color:rgb(31, 31, 31);">目标服务器进行验证，发现 Response 完全正确！服务器判定认证成功，</font><strong><font style="color:rgb(31, 31, 31);">为攻击者打开了系统大门</font></strong><font style="color:rgb(31, 31, 31);">。</font></p>
+<h1 id="heading-2">域认证</h1>
+<p><font style="color:rgb(36, 41, 46);">域是windows给大型企业管理资产服务提供一种方式。如果要搭建一个域环境，就必须安装一个活动目录服务。</font></p>
+<h2 id="font-stylecolorrgb36-41-46active-directoryfont"><font style="color:rgb(36, 41, 46);">Active Directory（活动目录）</font></h2>
+<p><font style="color:rgb(31, 31, 31);">活动目录服务以域名来划分域的边界，域外就不属于管理范围了，也就是说，一个域对应一个域名，域之间也可以相互信任。</font></p>
+<p><font style="color:rgb(31, 31, 31);">Active Directory 存储了有关网络对象的信息，并且让管理员和用 户能够轻松地查找和使用这些信息。Active Directory 使用了一种 结构化的数据存储方式，并以此作为基础对目录信息进行合乎逻辑的分层组织。</font></p>
+<p><font style="color:rgb(31, 31, 31);">网络对象分为：用户、用户组、计算机、域、组织单位以及安全 策略等。</font></p>
+<p><font style="color:rgb(31, 31, 31);"></font></p>
+<p><font style="color:rgb(36, 41, 46);">本身网络设备之间是可以互相访问的，这些在域控环境下的网络设备如果要相互访问，认证的协议就是kerberos协议。</font></p>
+<h2 id="---kerbroes">域认证体系 - Kerbroes</h2>
+<p>域内认证即采用了Kerberos协议的认证机制，与前两者相比最大的区别是有个一个可信的第三方机构KDC的参与</p>
+<p>域认证的三个重要角色：</p>
+<ul>
+<li><font style="color:rgb(36, 41, 46);">client</font></li>
+<li><font style="color:rgb(36, 41, 46);">server</font></li>
+<li><font style="color:rgb(36, 41, 46);">KDC（Key Distribution Center）=DC (Domain Controller)</font></li>
+</ul>
+<p>AD，全称叫account database，存储域中所有用户的用户名和对应的NTLM Hash，可以理解为域中的SAM数据库，KDC可以从AD中提取域中所有用户的NTLM Hash，这是Kerberos协议能够成功实现的基础。</p>
+<p>从物理层面看，AD与AS，TGS，KDC均为域控制器(Domain Controller)。</p>
+<p><font style="color:rgb(36, 41, 46);">KDC本身的功能实现是由三部分组成：</font></p>
+<p><strong>Authentication Service（AS）</strong>：用来给 Client 生成 TGT 的。Client 向 AS 发起认证请求，AS 拿着用户名去 AD里查这个用户是否存在，存在就对预认证数据进行验证，验证通过后 AS 生成 TGT（用 KRBTGT 密钥加密）返回给Client。整个认证过程中，只有 AS 能签发 TGT。</p>
+<p><strong>Ticket Granting Service（TGS）</strong>：用来给 Client 生成 ST（Service Ticket / 服务票据）的。Client 拿着 AS 发的 TGT +要访问的目标服务 SPN 向 TGS 发起请求，TGS 用 KRBTGT 密钥解出 TGT 内容，确认 Client身份合法后，用目标服务自身的密钥加密生成一个新的 ST 返回给 Client。Client 每次访问不同的服务都要找 TGS 单独申请对应的ST，同一个 TGT 可以反复使用、多次找 TGS 换不同服务的 ST。</p>
+<p><strong>Account Database（AD）</strong>：存储着所有域内账号信息（用户名、密码哈希、SID、组关系等），是 AS 和 TGS查询身份合法性、生成票据时的数据源。这里的 AD 指的是 KDC 内部的账号数据库，包含在 Active Directory体系内，两者在实际使用中统称 AD 即可。</p>
+<h3 id="font-stylecolorrgb51-51-51kerberos-font"><strong><font style="color:rgb(51, 51, 51);">Kerberos 认证机制流程</font></strong></h3>
+<p><strong><font style="color:rgb(51, 51, 51);">第一阶段：AS 认证（获取 TGT）</font></strong></p>
+<p><strong><font style="color:rgb(51, 51, 51);">AS-REQ</font></strong><font style="color:rgb(51, 51, 51);">：Client 向 KDC 发送认证请求，内容包括自己的用户名以及用 Client NTLM Hash 加密的时间戳（预认证数据）。KDC 交由 AS 根据用户名在 AD 中查找该 Client 是否存在（白名单验证），并在本地提取出对应的 NTLM Hash，用该 Hash 解密时间戳以验证 Client 身份。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">AS-REP</font></strong><font style="color:rgb(51, 51, 51);">：验证通过后，KDC（AS）随机生成一段字符串，叫做 </font><strong><font style="color:rgb(51, 51, 51);">Session Key</font></strong><font style="color:rgb(51, 51, 51);">，用 Client 的 NTLM Hash 加密后返回给 Client——这段加密的 Session Key 就是 Client 之后跟 TGS 通信的凭证。同时，KDC 用 </font><strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash</font></strong><font style="color:rgb(51, 51, 51);"> 对 Session Key 和 Client 信息（SID、所属组等，即 PAC）进行加密，生成 </font><strong><font style="color:rgb(51, 51, 51);">TGT</font></strong><font style="color:rgb(51, 51, 51);">。此时 KDC 生成了两份加密内容：</font></p>
+<ul>
+<li><strong><font style="color:rgb(51, 51, 51);">AS 内容</font></strong><font style="color:rgb(51, 51, 51);">：用 Client Hash 加密的 Session Key，Client 自己能解开，是后续访问 TGS 的凭证。</font></li>
+<li><strong><font style="color:rgb(51, 51, 51);">TGT 内容</font></strong><font style="color:rgb(51, 51, 51);">：用 KRBTGT Hash 加密的 Session Key + Client 信息，Client 解不开，必须原封不动交给 TGS。</font></li>
+</ul>
+<p><font style="color:rgb(51, 51, 51);">这两份内容一并返回给 Client。TGT 默认有效期 10 小时。</font></p>
+<p><font style="color:rgb(51, 51, 51);">第一阶段的目的是：</font><strong><font style="color:rgb(51, 51, 51);">验证 Client 是个合法域用户</font></strong><font style="color:rgb(51, 51, 51);">，核心依赖 AS 在 AD 中的白名单查询。操作主体是 AS，攻击面相对有限。</font></p>
+<p><font style="color:rgb(51, 51, 51);">Client 拿到 TGT 和用自己 NTLM Hash 加密的 Session Key 密文后，用自己的 Hash 解密得到 Session Key 明文。TGT 由于是 KRBTGT Hash 加密的，中间人即使获取到，没有 KRBTGT 的 Hash 也很难爆破。TGT 本质上就是 KDC 发的&quot;身份通行证&quot;，有这个 TGT 才能向 TGS 提后续请求。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">第二阶段：TGS 认证（获取 ST / Service Ticket）</font></strong></p>
+<p><strong><font style="color:rgb(51, 51, 51);">TGS-REQ</font></strong><font style="color:rgb(51, 51, 51);">：Client 用自己解密出的 Session Key 加密三部分内容：</font><strong><font style="color:rgb(51, 51, 51);">自身客户端信息 + 目标服务的 SPN + 时间戳</font></strong><font style="color:rgb(51, 51, 51);">，将这段密文连同之前拿到的 TGT 一起发给 KDC。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">TGS-REP</font></strong><font style="color:rgb(51, 51, 51);">：KDC（TGS）收到数据后：</font></p>
+<ol>
+<li><font style="color:rgb(51, 51, 51);">用 KRBTGT Hash 解密 TGT，从中提取出 Session Key 和 Client 的 PAC 信息。</font></li>
+<li><font style="color:rgb(51, 51, 51);">用这个 Session Key 去解密 Client 发来的加密数据（时间戳 + Client 信息 + 目标 SPN），验证 Client 身份和时间戳有效性。</font></li>
+<li><font style="color:rgb(51, 51, 51);">验证通过后，TGS 新生成一个 </font><strong><font style="color:rgb(51, 51, 51);">Server Session Key</font></strong><font style="color:rgb(51, 51, 51);">，从 AD 中找到目标服务（SPN 对应）的 NTLM Hash，用该 Server Hash 对三部分内容进行综合加密：</font><strong><font style="color:rgb(51, 51, 51);">Server Session Key + Client 信息 + 到期时间</font></strong><font style="color:rgb(51, 51, 51);">。这份密文就是 </font><strong><font style="color:rgb(51, 51, 51);">ST（Service Ticket / 服务票据）</font></strong><font style="color:rgb(51, 51, 51);">，是 Client 最后访问目标 Server 的凭证。</font></li>
+</ol>
+<p><font style="color:rgb(51, 51, 51);">TGS 最终返回给 Client 的是：</font></p>
+<ul>
+<li><strong><font style="color:rgb(51, 51, 51);">Server Session Key</font></strong><font style="color:rgb(51, 51, 51);">（用 Session Key 加密，Client 能解开）。</font></li>
+<li><strong><font style="color:rgb(51, 51, 51);">ST</font></strong><font style="color:rgb(51, 51, 51);">（用目标 Server 的 NTLM Hash 加密，Client 解不开）。</font></li>
+</ul>
+<p><font style="color:rgb(51, 51, 51);">这里的关键：ST 是用 Server 的 Hash 加密的，中间人即使抓到也没有 Server Hash，难以提取有效信息。同一个 TGT 可以多次找 TGS 申请不同 SPN 的 ST——访问几个服务就申请几次。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">第三阶段：AP 认证（Client 访问 Server）</font></strong></p>
+<p><strong><font style="color:rgb(51, 51, 51);">AP-REQ</font></strong><font style="color:rgb(51, 51, 51);">：Client 用 Server Session Key 加密</font><strong><font style="color:rgb(51, 51, 51);">自身客户端信息 + 时间戳</font></strong><font style="color:rgb(51, 51, 51);">，将这段密文连同之前拿到的 ST 一起发给目标 Server。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">AP-REP</font></strong><font style="color:rgb(51, 51, 51);">：Server 用自己的 NTLM Hash（存在本地 LSASS 内存中）解密 ST，从中提取出 Server Session Key 和 Client 信息，再用这个 Server Session Key 解密 Client 发来的时间戳。对比时间戳有效且 Session Key 匹配后，认证 Client 身份通过，授予访问权限。</font></p>
+<p><font style="color:rgb(51, 51, 51);">总结：</font><strong><font style="color:rgb(51, 51, 51);">AS 发 TGT（你谁），TGS 发 ST（你能访问谁），Server 验 ST（放你进来）</font></strong><font style="color:rgb(51, 51, 51);">。TGT 只有 AS 能发且全局唯一，ST 访问不同服务每次都要找 TGS 单独申请。</font></p>
+<p><strong><font style="color:rgb(26, 28, 31);">Windows 域认证的核心是 Kerberos：用户先向域控拿 TGT，再用 TGT 换访问具体服务的 Service Ticket，最后把 Service Ticket 交给目标服务完成认证。域控负责证明身份，票据负责传递身份和权限，目标服务根据票据和 ACL 决定是否允许访问。</font></strong></p>
+<h3 id="heading-3">白银票据</h3>
+<p>从上面流程可知：目标server 它是校验 ST 的，通过则能访问，而ST是用目标 server 的**<font style="color:rgb(51, 51, 51);">Server NTLM Hash</font><strong><font style="color:rgb(51, 51, 51);"> 加密的 </font></strong><font style="color:rgb(51, 51, 51);">Server Session Key + Client 信息 + 到期时间</font><strong><font style="color:rgb(51, 51, 51);">。 解密时：是用服务器自己的NTML解密出ST，拿到其中的</font></strong><font style="color:rgb(51, 51, 51);">Server Session Key，</font>**<font style="color:rgb(51, 51, 51);">在用Session key 去解密 发来的时间戳</font></p>
+<p><font style="color:rgb(51, 51, 51);">那就意味着，如果我们能拿到目标server的NTLM Hash，我们便完全可以进行伪造ST。可以直接在其中包含一个假的Session key，然后用目标server的NTLM Hash 进行加密，解密时，也是用提取出的这个假Session key 进行解密 客户端发来的时间戳，而客户端发送的加密时间戳，我们直接用这个假的Session key进行加密时间戳，便完成了伪造。</font></p>
+<h3 id="heading-4">黄金票据</h3>
+<p>黄金票据是发生在第一阶段，如果知道 <strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash，</font></strong><font style="color:rgb(51, 51, 51);">我们可以进行伪造TGT。还是一样的原理，TGT中包含Session key，TGS 接收到TGT后，使用</font><strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash </font></strong><font style="color:rgb(51, 51, 51);">解密拿到Session key ，用这个Session key 去解密 客户端发来的 时间戳 和 客户端的信息。那么我们可以 填上假的Session key 和 任意用户的PAC，使用</font><strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash </font></strong><font style="color:rgb(51, 51, 51);">进行加密，然后伪造出TGT，同样 Client  用假的 Session key加密三部分内容：</font><strong><font style="color:rgb(51, 51, 51);">任意用户的信息 和时间戳等等</font></strong><font style="color:rgb(51, 51, 51);">，将这段密文连同之前拿到的 TGT 一起发给 KDC。这样就可以伪造任意用户身份了。</font></p>
+<p><font style="color:rgb(51, 51, 51);"></font></p>
+<h3 id="font-stylecolorrgb51-51-51-font"><font style="color:rgb(51, 51, 51);">钻石票据 </font></h3>
+<p><font style="color:rgb(51, 51, 51);">钻石票据属于黄金票据的进阶用法，黄金票据是拿到</font><strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash</font></strong><font style="color:rgb(51, 51, 51);">后从头伪造一个TGT，实际上并没有经过KDC 的AS链，更容易被发现，而钻石票据是先申请一个合法的TGT 或者 抓取到一个合法的TGT，然后解密后，再去篡改其中的PAC信息，然后重新加密回去，这样就伪造了一个TGT，和黄金票据的区别点就是在于隐蔽性上，有没有经过真实的签发TGT。</font></p>
+<p><strong><font style="color:rgb(26, 28, 31);">Golden Ticket = 拿 </font><strong><strong><font style="color:rgb(26, 28, 31);">krbtgt</font></strong></strong><font style="color:rgb(26, 28, 31);"> key 后从零伪造 TGT，没真实 AS 签发链，较容易被发现。</font></strong><br />
+<strong><font style="color:rgb(26, 28, 31);">Diamond Ticket = 先拿真实 TGT，再改 PAC 重新封装，有真实签发痕迹，更隐蔽。</font></strong></p>
+<h3 id="font-stylecolorrgb51-51-51font"><font style="color:rgb(51, 51, 51);">蓝宝石票据</font></h3>
+<p>蓝宝石票据则是 钻石票据的升级版。可以看到钻石票据其中的PAC信息还是进行伪造的，而蓝宝石票据则是：通过<font style="color:rgb(26, 28, 31);">S4U2Self + U2U 获取到 真实用户的 PAC信息进行替换，也就是说 所有信息都是真的，只不过是被我们 进行 &ldquo;拼接&rdquo; 在了一起导致的伪造</font><font style="color:rgb(26, 28, 31);">。</font>生成的票据是合法元素的集合，并遵循标准票据请求，这使得它成为最难检测的银/金票据变体。</p>
+<p><strong><font style="color:rgb(26, 28, 31);">S4U2Self</font></strong><font style="color:rgb(26, 28, 31);"> ：一个服务用自己的 TGT，向 KDC 请求“某个用户访问我这个服务”的 Service Ticket。如何理解呢，就是正常情况下是 客户端主动去KDC申请到ST，而用S4U2Self则是 服务端主动申请帮客户端申请一张ST 让客户端有权限访问自己</font></p>
+<p><strong><font style="color:rgb(26, 28, 31);">U2U</font></strong><font style="color:rgb(26, 28, 31);">：ST原本是需要用服务器的NTLM hash 进行加密的，但是使用U2U，则可以变更为使用 当前 TGT 的 session key 加密，而 TGT是 </font><font style="color:rgb(51, 51, 51);">用 KRBTGT Hash 加密的。</font></p>
+<p><font style="color:rgb(51, 51, 51);"></font></p>
+<p><font style="color:rgb(51, 51, 51);">S4U2Self 决定“票里是谁的 PAC”，U2U 决定“这张票能不能被我们解开”。</font></p>
+<p><font style="color:rgb(51, 51, 51);"></font></p>
+<p><font style="color:rgb(51, 51, 51);">所以说连起来是怎么一回事呢：</font>攻击者控制 A，并拥有 krbtgt key。攻击者让 A 拿到一个 TGT，然后使用 S4U2Self + U2U 请求一张 ST(DA -&gt; A)。由于启用了 U2U，这张 ST 使用 A_TGT_session_key 加密。攻击者可以通过已有的 session key，或者用 krbtgt key 解开 A 的 TGT 取出 session key，再解开 ST，提取其中的 PAC(DA)。之后将这个真实的 PAC(DA) 替换/拼接进伪造的 TGT 中，并用 krbtgt key 重新签名和加密，最终得到一个包含真实域管 PAC 的 TGT。因此，U2U 的核心作用不是获取 PAC，而是让返回的 ST 可以被攻击者用 TGT session key 解开，从而读取其中的真实 PAC。如果攻击者已经知道 A 的对应长期密钥，并且 ST 使用该密钥类型加密，那么不用 U2U 也可以解 ST；但在不知道服务长期密钥、只掌握 TGT/session key/krbtgt key 的情况下，U2U 就是关键。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC"><li><a href="#heading">本地认证</a></li><li><a href="#heading-1">网络认证</a><ul><li><a href="#pth-pass-the-hash--">PTH（ Pass-The-Hash  哈希传递攻击）</a></li><li><a href="#ntlm-relay">NTLM Relay（中继攻击）</a></li></ul></li><li><a href="#heading-2">域认证</a><ul><li><a href="#font-stylecolorrgb36-41-46active-directoryfont">Active Directory（活动目录）</a></li><li><a href="#---kerbroes">域认证体系 - Kerbroes</a><ul><li><a href="#font-stylecolorrgb51-51-51kerberos-font">Kerberos 认证机制流程</a></li><li><a href="#heading-3">白银票据</a></li><li><a href="#heading-4">黄金票据</a></li><li><a href="#font-stylecolorrgb51-51-51-font">钻石票据</a></li><li><a href="#font-stylecolorrgb51-51-51font">蓝宝石票据</a></li></ul></li></ul></li></ul>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="/post/nei-cun-ma-hui-xian-yi-ji-fan-xu-lie-hua-zhu-ru/">
+              <h3 class="post-title">
+                内存马回显以及反序列化注入
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  
+  <a class="rss" href="/feed.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  <script>console.log("\n%c ✦ Gridea Pro v0.0.0-dev %c · Theme: notes v1.2.0 · https://gridea.pro %c\n","color:#fadfa3;background:#111111;padding:9px 14px;border-radius:4px 0 0 4px;font-weight:500;font-size:12px","color:#e05c00;background:#fff3ec;padding:9px 14px;border-radius:0 4px 4px 0;font-size:11px","")</script>
+</body>
+</html>

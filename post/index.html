@@ -1,0 +1,190 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="generator" content="Gridea Pro 0.0.0-dev">
+<title>Bloyet&#39;s blog</title>
+<link rel="shortcut icon" href="/favicon.ico?v=1789062689">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="/styles/main.css">
+<link rel="alternate" type="application/rss+xml" title="Bloyet&#39;s blog - RSS Feed" href="/feed.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="做那个人的战士，和他一起去经历，失败!" />
+  <meta name="description" content="做那个人的战士，和他一起去经历，失败!">
+<link rel="canonical" href="https://bloyet.github.io/post/">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Bloyet's blog","url":"https://bloyet.github.io","description":"做那个人的战士，和他一起去经历，失败!","potentialAction":{"@type":"SearchAction","query-input":"required name=search_term_string","target":"https://bloyet.github.io/search?q={search_term_string}"}}</script>
+<meta property="og:title" content="Bloyet's blog">
+<meta property="og:description" content="做那个人的战士，和他一起去经历，失败!">
+<meta property="og:url" content="https://bloyet.github.io/post/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Bloyet's blog">
+<meta property="og:image" content="/images/avatar.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://bloyet.github.io/post/">
+<meta name="twitter:title" content="Bloyet's blog">
+<meta name="twitter:description" content="做那个人的战士，和他一起去经历，失败!">
+<meta name="twitter:image" content="/images/avatar.png">
+</head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header-compact">
+  <a href="/" class="compact-title">
+    Bloyet&#39;s blog
+  </a>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/category/" class="menu">
+          分类
+        </a>
+      
+    
+      
+        <a href="/links" class="menu">
+          友链
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+</div>
+
+
+        <div class="post-container">
+  
+    <article class="post">
+      <a href="/post/window-authentication-mechanism/">
+        <h2 class="post-title">Window认证机制</h2>
+      </a>
+      <div class="post-info">
+        <span>
+          2026-05-29
+        </span>
+        <span>
+          24 分钟阅读
+        </span>
+        
+      </div>
+      
+      <div class="post-abstract">
+        <p>window的认证主要分为三部分：</p>
+<p>本地认证：用户直接操作计算机登陆账户</p>
+<p>网络认证：远程连接到工作组中的某个设备</p>
+<p>域认证：登陆到域环境中的某个设备</p>
+<h1 id="heading">本地认证</h1>
+<p>用户输入密码，系统收到密码后将用户输入的密码计算成NTLM Hash，然后与sam数据库（%SystemRoot%\system32\config\sam）中该用户的哈希比对，匹配则登陆成功，不匹配则&hellip;</p>
+
+      </div>
+    </article>
+  
+    <article class="post">
+      <a href="/post/nei-cun-ma-hui-xian-yi-ji-fan-xu-lie-hua-zhu-ru/">
+        <h2 class="post-title">内存马回显以及反序列化注入</h2>
+      </a>
+      <div class="post-info">
+        <span>
+          2025-09-04
+        </span>
+        <span>
+          78 分钟阅读
+        </span>
+        
+      </div>
+      
+      <div class="post-abstract">
+        <p>像我们之前通过jsp文件获取的request对象，那么获得回显就很容易了，jsp中内置的request对象，我们可以直接进行调用</p>
+<p>随便一个内存马把之前的直接命令执行 换成通过response来输出 出来，我们就可以看到命令的回显了</p>
+<pre><code class="language-java">String cmd = request.getParameter(&quot;cmd&quot;);
+response.setContentType(&quot;text/ht...
+</code></pre>
+
+      </div>
+    </article>
+  
+    <article class="post">
+      <a href="/post/spring-nei-cun-ma/">
+        <h2 class="post-title">Spring内存马</h2>
+      </a>
+      <div class="post-info">
+        <span>
+          2025-09-04
+        </span>
+        <span>
+          39 分钟阅读
+        </span>
+        
+      </div>
+      
+      <div class="post-abstract">
+        <p>在学习Spring内存马之前，作者打算好好恶补一下开发的基本知识，也算是给之前偷懒的自己补课吧</p>
+<p>[【狂神说Java】JavaWeb入门到实战_哔哩哔哩_bilibili](<a href="https://www.bilibili.com/video/BV12J411M7Sj/?spm_id_from=333.1387.collection.video_card.click&amp;vd_source=efb755bbe">https://www.bilibili.com/video/BV12J411M7Sj/?spm_id_from=333.1387.collection.video_card.click&amp;vd_source=efb755bbe</a>&hellip;</p>
+
+      </div>
+    </article>
+  
+    <article class="post">
+      <a href="/post/tomcat-xing-nei-cun-ma/">
+        <h2 class="post-title">Tomcat型内存马</h2>
+      </a>
+      <div class="post-info">
+        <span>
+          2025-09-04
+        </span>
+        <span>
+          58 分钟阅读
+        </span>
+        
+      </div>
+      
+      <div class="post-abstract">
+        <p>dda参考文献：</p>
+<p><a href="https://yyjccc.github.io/2024/03/06/Tomcat%E5%86%85%E5%AD%98%E9%A9%AC/">Tomcat内存马</a></p>
+<p><a href="https://goodapple.top/archives/1355">Java安全学习——内存马 - 枫のBlog</a></p>
+<h1 id="tomcatcontext">Tomcat中的三种Context</h1>
+<p>根据Tomcat的三大件servlet、li&hellip;</p>
+
+      </div>
+    </article>
+  
+</div>
+
+
+        <div class="pagination-container">
+  
+  
+</div>
+
+
+        <div class="site-footer">
+  
+  <a class="rss" href="/feed.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+  <script>console.log("\n%c ✦ Gridea Pro v0.0.0-dev %c · Theme: notes v1.2.0 · https://gridea.pro %c\n","color:#fadfa3;background:#111111;padding:9px 14px;border-radius:4px 0 0 4px;font-weight:500;font-size:12px","color:#e05c00;background:#fff3ec;padding:9px 14px;border-radius:0 4px 4px 0;font-size:11px","")</script>
+</body>
+</html>

